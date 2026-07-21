@@ -520,6 +520,7 @@ def admin_menu_kb(is_head: bool = False, admins_hidden: bool = False) -> InlineK
         [InlineKeyboardButton(text="🔍 Гараж игрока (ID/username)", callback_data="admin:lookup", style=ButtonStyle.PRIMARY)],
         [InlineKeyboardButton(text="📋 Каталог машин по редкости", callback_data="admin:catalog:1", style=ButtonStyle.PRIMARY)],
         [InlineKeyboardButton(text="📊 Статистика бота", callback_data="admin:stats", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(text="💸 История донатов", callback_data="admin:donations", style=ButtonStyle.PRIMARY)],
     ]
     if is_head:
         rows.append([InlineKeyboardButton(text="🎟 Создать промокод", callback_data="promo:create",

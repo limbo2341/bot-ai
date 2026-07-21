@@ -14,7 +14,7 @@ from aiogram.types import Message, CallbackQuery
 
 from db import (
     get_db, resolve_player, get_setting, set_setting,
-    get_fsub_channels, add_fsub_channel, remove_fsub_channel, get_bot_stats,
+    get_fsub_channels, add_fsub_channel, remove_fsub_channel, get_bot_stats, get_donation_history,
 )
 from config import ADMIN_IDS, HEAD_ADMIN_ID, RARITY_EMOJI
 from keyboards import (
@@ -184,6 +184,33 @@ async def admin_stats(callback: CallbackQuery):
         await callback.message.answer("\n".join(lines), parse_mode="HTML")
     except Exception as e:
         await callback.message.answer(f"⚠️ Не удалось собрать статистику: {e}")
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin:donations")
+async def admin_donations(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer()
+        return
+    try:
+        data = await get_donation_history(limit=20)
+        lines = [
+            "💸 <b>История донатов</b>\n━━━━━━━━━━━━━━",
+            f"Всего пожертвований: <b>{data['total_count']}</b> на сумму <b>{data['total_stars']}⭐</b>",
+            "\n<b>Последние {}:</b>".format(min(20, data['total_count'])),
+        ]
+        if not data["recent"]:
+            lines.append("Пока никто не жертвовал.")
+        for tg_id, username, stars, timestamp in data["recent"]:
+            name = f"@{username}" if username else str(tg_id)
+            try:
+                dt = datetime.datetime.fromisoformat(timestamp).strftime("%d.%m.%Y %H:%M")
+            except ValueError:
+                dt = timestamp
+            lines.append(f"• {name} — {stars}⭐ ({dt})")
+        await callback.message.answer("\n".join(lines), parse_mode="HTML")
+    except Exception as e:
+        await callback.message.answer(f"⚠️ Не удалось получить историю донатов: {e}")
     await callback.answer()
 
 

@@ -913,3 +913,29 @@ async def broadcast_message(bot, text: str, reply_markup=None, exclude_tg_id: in
             failed += 1
         await asyncio.sleep(0.05)  # троттлинг, чтобы не упереться в лимиты Telegram
     return sent, failed
+
+
+# ---------------------------------------------------------------- История донатов (админка)
+async def get_donation_history(limit: int = 20) -> dict:
+    """Возвращает последние пожертвования (payload содержит "donation") и общую сумму за всё время."""
+    conn = await get_db()
+    cur = await conn.execute(
+        """SELECT p.tg_id, u.username, p.stars_amount, p.timestamp FROM payments p
+           LEFT JOIN users u ON u.tg_id = p.tg_id
+           WHERE p.payload LIKE '%"donation"%' AND p.status = 'completed'
+           ORDER BY p.payment_id DESC LIMIT ?""",
+        (limit,),
+    )
+    rows = await cur.fetchall()
+
+    cur = await conn.execute(
+        """SELECT COALESCE(SUM(stars_amount), 0) as total, COUNT(*) as cnt FROM payments
+           WHERE payload LIKE '%"donation"%' AND status = 'completed'"""
+    )
+    totals = await cur.fetchone()
+
+    return {
+        "recent": [(r["tg_id"], r["username"], r["stars_amount"], r["timestamp"]) for r in rows],
+        "total_stars": totals["total"],
+        "total_count": totals["cnt"],
+    }
