@@ -164,20 +164,26 @@ async def admin_stats(callback: CallbackQuery):
     if not is_admin(callback.from_user.id):
         await callback.answer()
         return
-    stats = await get_bot_stats()
-    lines = [
-        "📊 <b>Статистика бота</b>\n━━━━━━━━━━━━━━",
-        f"👥 Всего регистраций: <b>{stats['total']}</b>",
-        f"✅ Реально активны (не заблокировали бота): <b>{stats['active_members']}</b>",
-        f"🚫 Заблокировали бота: <b>{stats['blocked']}</b>",
-        f"🆕 Новых сегодня: <b>{stats['new_today']}</b>",
-        f"⚡ Заходили сегодня: <b>{stats['active_today']}</b>",
-        "\n🏆 <b>Топ-10 самых активных</b> (по числу действий):",
-    ]
-    for i, (tg_id, username, action_count, level) in enumerate(stats["top_active"], start=1):
-        name = f"@{username}" if username else str(tg_id)
-        lines.append(f"{i}. {name} — {action_count:,} действий (ур. {level})".replace(",", " "))
-    await callback.message.answer("\n".join(lines), parse_mode="HTML")
+    try:
+        stats = await get_bot_stats()
+        lines = [
+            "📊 <b>Статистика бота</b>\n━━━━━━━━━━━━━━",
+            f"👥 Всего регистраций: <b>{stats['total']}</b>",
+            f"✅ Реально активны (не заблокировали бота): <b>{stats['active_members']}</b>",
+            f"🚫 Заблокировали бота: <b>{stats['blocked']}</b>",
+            f"🆕 Новых сегодня: <b>{stats['new_today']}</b>",
+            f"⚡ Заходили сегодня: <b>{stats['active_today']}</b>",
+            "\n🏆 <b>Топ-10 самых активных</b> (по числу действий):",
+        ]
+        if not stats["top_active"]:
+            lines.append("Пока нет данных — статистика действий только начала собираться.")
+        for i, (tg_id, username, action_count, level) in enumerate(stats["top_active"], start=1):
+            safe_username = str(username).replace("<", "").replace(">", "").replace("&", "") if username else None
+            name = f"@{safe_username}" if safe_username else str(tg_id)
+            lines.append(f"{i}. {name} — {action_count or 0:,} действий (ур. {level})".replace(",", " "))
+        await callback.message.answer("\n".join(lines), parse_mode="HTML")
+    except Exception as e:
+        await callback.message.answer(f"⚠️ Не удалось собрать статистику: {e}")
     await callback.answer()
 
 

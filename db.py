@@ -867,12 +867,11 @@ async def get_bot_stats() -> dict:
     cur = await conn.execute("SELECT COUNT(*) as cnt FROM users WHERE blocked_bot = 1")
     blocked = (await cur.fetchone())["cnt"]
 
-    cur = await conn.execute("SELECT COUNT(*) as cnt FROM users WHERE joined_date::date = ?::date", (today,))
+    cur = await conn.execute("SELECT COUNT(*) as cnt FROM users WHERE joined_date LIKE ?", (f"{today}%",))
     new_today = (await cur.fetchone())["cnt"]
 
     cur = await conn.execute(
-        "SELECT COUNT(*) as cnt FROM users WHERE last_active_at IS NOT NULL AND last_active_at::date = ?::date",
-        (today,),
+        "SELECT COUNT(*) as cnt FROM users WHERE last_active_at LIKE ?", (f"{today}%",)
     )
     active_today = (await cur.fetchone())["cnt"]
 
