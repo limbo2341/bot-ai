@@ -166,7 +166,8 @@ CREATE TABLE IF NOT EXISTS users (
     last_active_at TEXT,
     action_count BIGINT NOT NULL DEFAULT 0,
     blocked_bot INTEGER NOT NULL DEFAULT 0,
-    premium_container_claimed_at TEXT
+    premium_container_claimed_at TEXT,
+    duel_win_streak INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS cars (
@@ -338,6 +339,7 @@ MIGRATIONS = [
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS action_count BIGINT NOT NULL DEFAULT 0",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_bot INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_container_claimed_at TEXT",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS duel_win_streak INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_daily_bonus_at TEXT",
     "ALTER TABLE cars ADD COLUMN IF NOT EXISTS telegram_file_id TEXT",
     "ALTER TABLE cars ADD COLUMN IF NOT EXISTS photo_is_custom INTEGER NOT NULL DEFAULT 0",

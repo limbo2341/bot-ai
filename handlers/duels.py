@@ -11,7 +11,7 @@ from aiogram.types import Message, CallbackQuery
 from db import get_db, add_user_exp
 from handlers.battlepass import increment_quest_progress
 from keyboards import duel_menu_kb, duel_squad_kb
-from config import RARITY_MULTIPLIERS
+from config import RARITY_MULTIPLIERS, DUEL_WIN_STREAK_GOLD, DUEL_WIN_STREAK_TARGET
 
 router = Router(name="duels")
 
@@ -174,6 +174,17 @@ async def _resolve_duel_later(bot: Bot, duel_id: int, tg_id: int, squad: set, op
     await conn.execute("UPDATE users SET silver = silver + ? WHERE tg_id = ?", (actual_stake, winner_id))
     await conn.execute("UPDATE users SET silver = GREATEST(silver - ?, 0) WHERE tg_id = ?",
                         (actual_stake, loser_id))
+
+    # Золото за серию побед подряд — сбрасывается при поражении, так что легко не достанется.
+    cur = await conn.execute("SELECT duel_win_streak FROM users WHERE tg_id = ?", (winner_id,))
+    row = await cur.fetchone()
+    win_streak = (row["duel_win_streak"] if row else 0) + 1
+    streak_gold = 0
+    if win_streak % DUEL_WIN_STREAK_TARGET == 0:
+        streak_gold = DUEL_WIN_STREAK_GOLD
+        await conn.execute("UPDATE users SET gold = gold + ? WHERE tg_id = ?", (streak_gold, winner_id))
+    await conn.execute("UPDATE users SET duel_win_streak = ? WHERE tg_id = ?", (win_streak, winner_id))
+    await conn.execute("UPDATE users SET duel_win_streak = 0 WHERE tg_id = ?", (loser_id,))
     await conn.commit()
 
     await add_user_exp(winner_id, 150)
@@ -186,10 +197,14 @@ async def _resolve_duel_later(bot: Bot, duel_id: int, tg_id: int, squad: set, op
         f"Ваша мощь: {my_power:,.0f}\nМощь соперника: {opp_power:,.0f}\n━━━━━━━━━━━━━━\n"
         f"{{result}}\n💰 Ставка: {actual_stake:,} серебра".replace(",", " ")
     )
+    winner_extra = f"\n🥇 Серия побед: {win_streak}"
+    if streak_gold:
+        winner_extra += f" — бонус +{streak_gold} золота! 🔥"
     try:
         await bot.send_message(
             tg_id,
-            result_text.format(result="🏆 Вы победили!" if winner_id == tg_id else "💀 Вы проиграли."),
+            result_text.format(result="🏆 Вы победили!" if winner_id == tg_id else "💀 Вы проиграли.")
+            + (winner_extra if winner_id == tg_id else ""),
             parse_mode="HTML",
         )
     except Exception:
@@ -197,7 +212,8 @@ async def _resolve_duel_later(bot: Bot, duel_id: int, tg_id: int, squad: set, op
     try:
         await bot.send_message(
             opponent_id,
-            result_text.format(result="🏆 Вы победили!" if winner_id == opponent_id else "💀 Вы проиграли."),
+            result_text.format(result="🏆 Вы победили!" if winner_id == opponent_id else "💀 Вы проиграли.")
+            + (winner_extra if winner_id == opponent_id else ""),
             parse_mode="HTML",
         )
     except Exception:

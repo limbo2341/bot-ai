@@ -12,7 +12,7 @@ from aiogram.types import Message, CallbackQuery
 
 from db import get_db, has_garage_space, add_user_exp, is_user_premium
 from keyboards import bonuses_menu_kb
-from config import REFERRAL_THRESHOLD, PREMIUM_DAILY_BONUS_MULT
+from config import REFERRAL_THRESHOLD, PREMIUM_DAILY_BONUS_MULT, WEEKLY_STREAK_GOLD
 
 router = Router(name="bonuses")
 
@@ -118,6 +118,10 @@ async def daily_bonus_claim(callback: CallbackQuery):
     )
     await add_user_exp(tg_id, 20)
 
+    weekly_gold = WEEKLY_STREAK_GOLD if streak % 7 == 0 else 0
+    if weekly_gold:
+        await conn.execute("UPDATE users SET gold = gold + ? WHERE tg_id = ?", (weekly_gold, tg_id))
+
     bonus_text = (
         f"🎰 <b>Ежедневный бонус!</b>\n━━━━━━━━━━━━━━\n"
         f"💰 +{silver_reward:,} серебра\n⭐ +20 XP профиля\n🔥 Серия: {streak} "
@@ -125,6 +129,8 @@ async def daily_bonus_claim(callback: CallbackQuery):
     ).replace(",", " ")
     if streak_bonus_pct > 0:
         bonus_text += f" (+{streak_bonus_pct*100:.0f}% за серию)"
+    if weekly_gold:
+        bonus_text += f"\n🏅 Целая неделя подряд! +{weekly_gold} золота"
     if is_premium:
         bonus_text += f"\n💎 Premium BP: x{PREMIUM_DAILY_BONUS_MULT} к награде"
 

@@ -61,8 +61,8 @@ def menu_more_kb() -> ReplyKeyboardMarkup:
 def bonuses_menu_kb(is_premium: bool = False) -> InlineKeyboardMarkup:
     rows = [
         [InlineKeyboardButton(text="🎰 Ежедневный бонус", callback_data="bonus:daily", style=ButtonStyle.SUCCESS)],
-        [InlineKeyboardButton(text="👥 Реферальная система", callback_data="bonus:referral")],
-        [InlineKeyboardButton(text="🎫 Ввести промокод", callback_data="bonus:promo")],
+        [InlineKeyboardButton(text="👥 Реферальная система", callback_data="bonus:referral", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(text="🎫 Ввести промокод", callback_data="bonus:promo", style=ButtonStyle.PRIMARY)],
     ]
     if is_premium:
         rows.append([InlineKeyboardButton(text="💎 Ежедневный премиум-контейнер",
@@ -74,13 +74,13 @@ def bonuses_menu_kb(is_premium: bool = False) -> InlineKeyboardMarkup:
 def promo_reward_type_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="💰 Серебро", callback_data="promo:type:silver"),
-            InlineKeyboardButton(text="🥇 Золото", callback_data="promo:type:gold"),
-            InlineKeyboardButton(text="🎟 Фишки", callback_data="promo:type:chips"),
+            InlineKeyboardButton(text="💰 Серебро", callback_data="promo:type:silver", style=ButtonStyle.PRIMARY),
+            InlineKeyboardButton(text="🥇 Золото", callback_data="promo:type:gold", style=ButtonStyle.PRIMARY),
+            InlineKeyboardButton(text="🎟 Фишки", callback_data="promo:type:chips", style=ButtonStyle.PRIMARY),
         ],
         [
-            InlineKeyboardButton(text="📦 Контейнер", callback_data="promo:type:container"),
-            InlineKeyboardButton(text="🚗 Машина", callback_data="promo:type:car"),
+            InlineKeyboardButton(text="📦 Контейнер", callback_data="promo:type:container", style=ButtonStyle.PRIMARY),
+            InlineKeyboardButton(text="🚗 Машина", callback_data="promo:type:car", style=ButtonStyle.PRIMARY),
         ],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="admin:cancel_flow", style=ButtonStyle.DANGER)],
     ])
@@ -88,16 +88,16 @@ def promo_reward_type_kb() -> InlineKeyboardMarkup:
 
 def promo_container_choice_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📦 Обычный", callback_data="promo:container:common")],
-        [InlineKeyboardButton(text="📦 Редкий", callback_data="promo:container:rare")],
-        [InlineKeyboardButton(text="📦 Премиум", callback_data="promo:container:premium")],
+        [InlineKeyboardButton(text="📦 Обычный", callback_data="promo:container:common", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(text="📦 Редкий", callback_data="promo:container:rare", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(text="📦 Премиум", callback_data="promo:container:premium", style=ButtonStyle.PRIMARY)],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="admin:cancel_flow", style=ButtonStyle.DANGER)],
     ])
 
 
 def bug_report_admin_kb(report_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💬 Ответить", callback_data=f"bug:reply:{report_id}")],
+        [InlineKeyboardButton(text="💬 Ответить", callback_data=f"bug:reply:{report_id}", style=ButtonStyle.PRIMARY)],
         [
             InlineKeyboardButton(text="✅ Принять", callback_data=f"bug:accept:{report_id}", style=ButtonStyle.SUCCESS),
             InlineKeyboardButton(text="🚫 Игнорировать", callback_data=f"bug:ignore:{report_id}", style=ButtonStyle.DANGER),
@@ -108,17 +108,17 @@ def bug_report_admin_kb(report_id: int) -> InlineKeyboardMarkup:
 def profile_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🖼 Установить аватар", callback_data="profile:set_avatar", style=ButtonStyle.SUCCESS)],
-        [InlineKeyboardButton(text="🏆 Топ богачей", callback_data="profile:leaderboard")],
+        [InlineKeyboardButton(text="🏆 Топ богачей", callback_data="profile:leaderboard", style=ButtonStyle.PRIMARY)],
         [InlineKeyboardButton(text=f"{BACK} в меню", callback_data="nav:progress", style=ButtonStyle.PRIMARY)],
     ])
 
 
 def upgrades_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⚡ Улучшение фарма", callback_data="upg:farm")],
-        [InlineKeyboardButton(text="🏠 Улучшение ангара", callback_data="upg:garage")],
-        [InlineKeyboardButton(text="⏳ Улучшение часов фарма", callback_data="upg:hours")],
-        [InlineKeyboardButton(text="🎁 Ускорение бесплатной машины", callback_data="upg:freecar")],
+        [InlineKeyboardButton(text="⚡ Улучшение фарма", callback_data="upg:farm", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(text="🏠 Улучшение ангара", callback_data="upg:garage", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(text="⏳ Улучшение часов фарма", callback_data="upg:hours", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(text="🎁 Ускорение бесплатной машины", callback_data="upg:freecar", style=ButtonStyle.PRIMARY)],
         [InlineKeyboardButton(text=f"{BACK} в меню", callback_data="nav:economy", style=ButtonStyle.PRIMARY)],
     ])
 
@@ -171,12 +171,21 @@ def freecar_upgrade_kb(next_level: int, can_afford: bool) -> InlineKeyboardMarku
 
 
 def shop_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
+    from config import GOLD_PACKS
+    rows = [
         [InlineKeyboardButton(text="⭐ Starter Pack — 39⭐", callback_data="shop:buy:starter", style=ButtonStyle.SUCCESS)],
         [InlineKeyboardButton(text="⭐ Pro Pack — 199⭐", callback_data="shop:buy:pro", style=ButtonStyle.SUCCESS)],
-        [InlineKeyboardButton(text="💎 Premium BP — открыть в «🎫 Боевой пропуск»", callback_data="bp:premium")],
-        [InlineKeyboardButton(text=f"{BACK} в меню", callback_data="nav:economy", style=ButtonStyle.PRIMARY)],
-    ])
+        [InlineKeyboardButton(text="💎 Premium BP — открыть в «🎫 Боевой пропуск»", callback_data="bp:premium", style=ButtonStyle.PRIMARY)],
+    ]
+    for key, opt in GOLD_PACKS.items():
+        rows.append([InlineKeyboardButton(
+            text=f"🥇 {opt['label']} — {opt['price']}⭐", callback_data=f"shop:gold:{key}",
+            style=ButtonStyle.SUCCESS,
+        )])
+    rows.append([InlineKeyboardButton(text="❤️ Донат / Пожертвование", callback_data="shop:donate",
+                                       style=ButtonStyle.SUCCESS)])
+    rows.append([InlineKeyboardButton(text=f"{BACK} в меню", callback_data="nav:economy", style=ButtonStyle.PRIMARY)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def garage_list_kb(cars: list, page: int, total_pages: int, owner_id: int) -> InlineKeyboardMarkup:
@@ -186,13 +195,13 @@ def garage_list_kb(cars: list, page: int, total_pages: int, owner_id: int) -> In
         rows.append([InlineKeyboardButton(
             text=f"{emoji} {brand} {name} (T{tier}) — {income}/ч",
             callback_data=f"garage:view:{owner_id}:{entry_id}",
-        )])
+        style=ButtonStyle.PRIMARY)])
     nav = []
     if page > 1:
         nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"garage:page:{owner_id}:{page-1}", style=ButtonStyle.PRIMARY))
-    nav.append(InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="noop"))
+    nav.append(InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="noop", style=ButtonStyle.PRIMARY))
     if page < total_pages:
-        nav.append(InlineKeyboardButton(text="➡️", callback_data=f"garage:page:{owner_id}:{page+1}"))
+        nav.append(InlineKeyboardButton(text="➡️", callback_data=f"garage:page:{owner_id}:{page+1}", style=ButtonStyle.PRIMARY))
     if nav:
         rows.append(nav)
     rows.append([InlineKeyboardButton(text="🗑 Продать несколько", callback_data=f"garage:sellmode:{owner_id}:1", style=ButtonStyle.DANGER)])
@@ -213,9 +222,9 @@ def garage_sellmode_kb(cars: list, selected_ids: set, page: int, total_pages: in
     nav = []
     if page > 1:
         nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"garage:sellmode:{owner_id}:{page-1}", style=ButtonStyle.PRIMARY))
-    nav.append(InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="noop"))
+    nav.append(InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="noop", style=ButtonStyle.PRIMARY))
     if page < total_pages:
-        nav.append(InlineKeyboardButton(text="➡️", callback_data=f"garage:sellmode:{owner_id}:{page+1}"))
+        nav.append(InlineKeyboardButton(text="➡️", callback_data=f"garage:sellmode:{owner_id}:{page+1}", style=ButtonStyle.PRIMARY))
     if nav:
         rows.append(nav)
     count = len(selected_ids)
@@ -224,7 +233,7 @@ def garage_sellmode_kb(cars: list, selected_ids: set, page: int, total_pages: in
         callback_data=f"garage:sellconfirm:{owner_id}",
         style=ButtonStyle.DANGER if count else None,
     )])
-    rows.append([InlineKeyboardButton(text="🔄 Снять все галочки", callback_data=f"garage:sellclear:{owner_id}")])
+    rows.append([InlineKeyboardButton(text="🔄 Снять все галочки", callback_data=f"garage:sellclear:{owner_id}", style=ButtonStyle.PRIMARY)])
     rows.append([InlineKeyboardButton(text=f"{BACK} в гараж", callback_data=f"garage:page:{owner_id}:1", style=ButtonStyle.PRIMARY)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -242,10 +251,10 @@ def garage_car_detail_kb(entry_id: int, is_favorite: bool, owner_id: int) -> Inl
 
 def casino_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💱 Обменник", callback_data="casino:exchange")],
-        [InlineKeyboardButton(text="🏀 Баскетбол (/basket)", callback_data="casino:info:basket")],
-        [InlineKeyboardButton(text="🎰 Слоты (/slot)", callback_data="casino:info:slot")],
-        [InlineKeyboardButton(text="🎲 Кости (/dice)", callback_data="casino:info:dice")],
+        [InlineKeyboardButton(text="💱 Обменник", callback_data="casino:exchange", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(text="🏀 Баскетбол (/basket)", callback_data="casino:info:basket", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(text="🎰 Слоты (/slot)", callback_data="casino:info:slot", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(text="🎲 Кости (/dice)", callback_data="casino:info:dice", style=ButtonStyle.PRIMARY)],
         [InlineKeyboardButton(text=f"{BACK} в меню", callback_data="nav:pvp", style=ButtonStyle.PRIMARY)],
     ])
 
@@ -265,7 +274,7 @@ def exchange_amount_kb(direction: str, amounts: list[int]) -> InlineKeyboardMark
     for amount in amounts:
         row.append(InlineKeyboardButton(
             text=f"{amount:,}".replace(",", " "), callback_data=f"exch:{direction}:amt:{amount}",
-        ))
+        style=ButtonStyle.PRIMARY))
         if len(row) == 2:
             rows.append(row)
             row = []
@@ -273,15 +282,15 @@ def exchange_amount_kb(direction: str, amounts: list[int]) -> InlineKeyboardMark
         rows.append(row)
     rows.append([InlineKeyboardButton(text="💯 Максимум", callback_data=f"exch:{direction}:amt:max",
                                        style=ButtonStyle.SUCCESS)])
-    rows.append([InlineKeyboardButton(text="✏️ Своя сумма", callback_data=f"exch:{direction}:custom")])
+    rows.append([InlineKeyboardButton(text="✏️ Своя сумма", callback_data=f"exch:{direction}:custom", style=ButtonStyle.PRIMARY)])
     rows.append([InlineKeyboardButton(text=BACK, callback_data="casino:exchange", style=ButtonStyle.PRIMARY)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def battle_pass_kb(page: int, total_pages: int) -> InlineKeyboardMarkup:
     rows = [[
-        InlineKeyboardButton(text="🎁 Награды", callback_data=f"bp:levels:{page}"),
-        InlineKeyboardButton(text="📜 Задания", callback_data="bp:quests:1"),
+        InlineKeyboardButton(text="🎁 Награды", callback_data=f"bp:levels:{page}", style=ButtonStyle.PRIMARY),
+        InlineKeyboardButton(text="📜 Задания", callback_data="bp:quests:1", style=ButtonStyle.PRIMARY),
     ], [
         InlineKeyboardButton(text="💎 Купить Premium BP", callback_data="bp:premium", style=ButtonStyle.SUCCESS),
     ], [
@@ -298,9 +307,9 @@ def bp_levels_kb(page: int, total_pages: int, claimable_levels: list[int]) -> In
     nav = []
     if page > 1:
         nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"bp:levels:{page-1}", style=ButtonStyle.PRIMARY))
-    nav.append(InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="noop"))
+    nav.append(InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="noop", style=ButtonStyle.PRIMARY))
     if page < total_pages:
-        nav.append(InlineKeyboardButton(text="➡️", callback_data=f"bp:levels:{page+1}"))
+        nav.append(InlineKeyboardButton(text="➡️", callback_data=f"bp:levels:{page+1}", style=ButtonStyle.PRIMARY))
     rows.append(nav)
     rows.append([InlineKeyboardButton(text=f"{BACK} в пропуск", callback_data="bp:back", style=ButtonStyle.PRIMARY)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -314,9 +323,9 @@ def bp_quests_kb(page: int, total_pages: int, claimable_keys: list[str]) -> Inli
     nav = []
     if page > 1:
         nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"bp:quests:{page-1}", style=ButtonStyle.PRIMARY))
-    nav.append(InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="noop"))
+    nav.append(InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="noop", style=ButtonStyle.PRIMARY))
     if page < total_pages:
-        nav.append(InlineKeyboardButton(text="➡️", callback_data=f"bp:quests:{page+1}"))
+        nav.append(InlineKeyboardButton(text="➡️", callback_data=f"bp:quests:{page+1}", style=ButtonStyle.PRIMARY))
     rows.append(nav)
     rows.append([InlineKeyboardButton(text=f"{BACK} в пропуск", callback_data="bp:back", style=ButtonStyle.PRIMARY)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -343,7 +352,7 @@ def inventory_kb(items: list) -> InlineKeyboardMarkup:
     for item_id, item_type, item_name, qty in items:
         rows.append([InlineKeyboardButton(
             text=f"{item_name} x{qty}", callback_data=f"inv:view:{item_id}",
-        )])
+        style=ButtonStyle.PRIMARY)])
     rows.append([InlineKeyboardButton(text=f"{BACK} в меню", callback_data="nav:progress", style=ButtonStyle.PRIMARY)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -360,17 +369,17 @@ def clan_menu_kb(has_clan: bool) -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🏦 Пополнить банк клана", callback_data="clan:donate",
                                    style=ButtonStyle.SUCCESS)],
-            [InlineKeyboardButton(text="👥 Пригласить друга", callback_data="clan:invite")],
-            [InlineKeyboardButton(text="📊 Уровень клана", callback_data="clan:level")],
-            [InlineKeyboardButton(text="🏆 Топ кланов", callback_data="clan:leaderboard")],
+            [InlineKeyboardButton(text="👥 Пригласить друга", callback_data="clan:invite", style=ButtonStyle.PRIMARY)],
+            [InlineKeyboardButton(text="📊 Уровень клана", callback_data="clan:level", style=ButtonStyle.PRIMARY)],
+            [InlineKeyboardButton(text="🏆 Топ кланов", callback_data="clan:leaderboard", style=ButtonStyle.PRIMARY)],
             [InlineKeyboardButton(text="🚪 Покинуть клан", callback_data="clan:leave", style=ButtonStyle.DANGER)],
             [InlineKeyboardButton(text=f"{BACK} в меню", callback_data="nav:pvp", style=ButtonStyle.PRIMARY)],
         ])
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🏛 Создать клан", callback_data="clan:create", style=ButtonStyle.SUCCESS)],
-        [InlineKeyboardButton(text="🔎 Рекомендации кланов", callback_data="clan:browse")],
-        [InlineKeyboardButton(text="🔍 Искать клан по названию", callback_data="clan:search")],
-        [InlineKeyboardButton(text="🏆 Топ кланов", callback_data="clan:leaderboard")],
+        [InlineKeyboardButton(text="🔎 Рекомендации кланов", callback_data="clan:browse", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(text="🔍 Искать клан по названию", callback_data="clan:search", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(text="🏆 Топ кланов", callback_data="clan:leaderboard", style=ButtonStyle.PRIMARY)],
         [InlineKeyboardButton(text=f"{BACK} в меню", callback_data="nav:pvp", style=ButtonStyle.PRIMARY)],
     ])
 
@@ -392,7 +401,7 @@ def clan_browse_kb(clans: list, refresh_cb: str) -> InlineKeyboardMarkup:
             text=f"🏛 {clan_name} (ур. {clan_level}, 👥{members})",
             callback_data=f"clan:join:{clan_id}", style=ButtonStyle.SUCCESS,
         )])
-    rows.append([InlineKeyboardButton(text="🔄 Обновить список", callback_data=refresh_cb)])
+    rows.append([InlineKeyboardButton(text="🔄 Обновить список", callback_data=refresh_cb, style=ButtonStyle.PRIMARY)])
     rows.append([InlineKeyboardButton(text=f"{BACK} в кланы", callback_data="clan:back", style=ButtonStyle.PRIMARY)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -411,7 +420,7 @@ def clan_donate_kb() -> InlineKeyboardMarkup:
 
 def duel_menu_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🛡 Собрать состав", callback_data="duel:squad")],
+        [InlineKeyboardButton(text="🛡 Собрать состав", callback_data="duel:squad", style=ButtonStyle.PRIMARY)],
         [InlineKeyboardButton(text="⚔️ Найти соперника", callback_data="duel:find", style=ButtonStyle.SUCCESS)],
         [InlineKeyboardButton(text="🚫 Отменить поиск", callback_data="duel:cancel_search", style=ButtonStyle.DANGER)],
         [InlineKeyboardButton(text=f"{BACK} в меню", callback_data="nav:pvp", style=ButtonStyle.PRIMARY)],
@@ -438,8 +447,8 @@ def duel_squad_kb(cars: list, selected_ids: set, owner_id: int) -> InlineKeyboar
 
 def auction_menu_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📋 Активные лоты", callback_data="auc:list:1")],
-        [InlineKeyboardButton(text="🗂 Мои лоты", callback_data="auc:mylots:1")],
+        [InlineKeyboardButton(text="📋 Активные лоты", callback_data="auc:list:1", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(text="🗂 Мои лоты", callback_data="auc:mylots:1", style=ButtonStyle.PRIMARY)],
         [InlineKeyboardButton(text="➕ Выставить машину", callback_data="auc:create", style=ButtonStyle.SUCCESS)],
         [InlineKeyboardButton(text=f"{BACK} в меню", callback_data="nav:pvp", style=ButtonStyle.PRIMARY)],
     ])
@@ -456,9 +465,9 @@ def auction_my_lots_kb(lots: list, page: int, total_pages: int) -> InlineKeyboar
     if page > 1:
         nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"auc:mylots:{page-1}", style=ButtonStyle.PRIMARY))
     if total_pages > 1:
-        nav.append(InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="noop"))
+        nav.append(InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="noop", style=ButtonStyle.PRIMARY))
     if page < total_pages:
-        nav.append(InlineKeyboardButton(text="➡️", callback_data=f"auc:mylots:{page+1}"))
+        nav.append(InlineKeyboardButton(text="➡️", callback_data=f"auc:mylots:{page+1}", style=ButtonStyle.PRIMARY))
     if nav:
         rows.append(nav)
     rows.append([InlineKeyboardButton(text=BACK, callback_data="auc:back", style=ButtonStyle.PRIMARY)])
@@ -472,7 +481,7 @@ def container_menu_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="📦 Редкий контейнер — 50 золота", callback_data="cont:buy:rare:1", style=ButtonStyle.SUCCESS)],
         [InlineKeyboardButton(text=f"📦 Премиум контейнер — от {PREMIUM_CONTAINER_BASE_PRICE}⭐",
                                callback_data="cont:premmenu", style=ButtonStyle.SUCCESS)],
-        [InlineKeyboardButton(text="📊 Таблица шансов", callback_data="cont:odds")],
+        [InlineKeyboardButton(text="📊 Таблица шансов", callback_data="cont:odds", style=ButtonStyle.PRIMARY)],
         [InlineKeyboardButton(text=f"{BACK} в меню", callback_data="nav:economy", style=ButtonStyle.PRIMARY)],
     ])
 
@@ -497,21 +506,21 @@ def admin_menu_kb(is_head: bool = False, admins_hidden: bool = False) -> InlineK
         [InlineKeyboardButton(text="➕ Добавить машину", callback_data="admin:addcar", style=ButtonStyle.SUCCESS)],
         [InlineKeyboardButton(text="🎁 Выдать машину игроку", callback_data="admin:givecar", style=ButtonStyle.SUCCESS)],
         [InlineKeyboardButton(text="💰 Выдать валюту игроку", callback_data="admin:givecurrency", style=ButtonStyle.SUCCESS)],
-        [InlineKeyboardButton(text="🖼 Изменить фото машины", callback_data="admin:setphoto")],
+        [InlineKeyboardButton(text="🖼 Изменить фото машины", callback_data="admin:setphoto", style=ButtonStyle.PRIMARY)],
         [InlineKeyboardButton(text="🗑 Удалить машину из каталога", callback_data="admin:delcar",
                                style=ButtonStyle.DANGER)],
-        [InlineKeyboardButton(text="🗓 Новый сезон", callback_data="admin:addseason")],
-        [InlineKeyboardButton(text="📢 Рассылка", callback_data="admin:broadcast")],
-        [InlineKeyboardButton(text="🔍 Гараж игрока (ID/username)", callback_data="admin:lookup")],
-        [InlineKeyboardButton(text="📋 Каталог машин по редкости", callback_data="admin:catalog:1")],
-        [InlineKeyboardButton(text="📊 Статистика бота", callback_data="admin:stats")],
+        [InlineKeyboardButton(text="🗓 Новый сезон", callback_data="admin:addseason", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(text="📢 Рассылка", callback_data="admin:broadcast", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(text="🔍 Гараж игрока (ID/username)", callback_data="admin:lookup", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(text="📋 Каталог машин по редкости", callback_data="admin:catalog:1", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(text="📊 Статистика бота", callback_data="admin:stats", style=ButtonStyle.PRIMARY)],
     ]
     if is_head:
         rows.append([InlineKeyboardButton(text="🎟 Создать промокод", callback_data="promo:create",
                                            style=ButtonStyle.SUCCESS)])
         toggle_text = "✅ Показать админов в топе богачей" if admins_hidden else "🚫 Скрыть админов из топа богачей"
-        rows.append([InlineKeyboardButton(text=toggle_text, callback_data="admin:toggle_leaderboard")])
-        rows.append([InlineKeyboardButton(text="🔔 Обязательная подписка", callback_data="admin:fsub:menu")])
+        rows.append([InlineKeyboardButton(text=toggle_text, callback_data="admin:toggle_leaderboard", style=ButtonStyle.PRIMARY)])
+        rows.append([InlineKeyboardButton(text="🔔 Обязательная подписка", callback_data="admin:fsub:menu", style=ButtonStyle.PRIMARY)])
     rows.append([InlineKeyboardButton(text=f"{BACK} в игровое меню", callback_data="nav:main", style=ButtonStyle.PRIMARY)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -530,9 +539,9 @@ def admin_approval_kb(request_id: int) -> InlineKeyboardMarkup:
 def admin_currency_choice_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="💰 Серебро", callback_data="admin:currency:silver"),
-            InlineKeyboardButton(text="🥇 Золото", callback_data="admin:currency:gold"),
-            InlineKeyboardButton(text="🎟 Фишки", callback_data="admin:currency:chips"),
+            InlineKeyboardButton(text="💰 Серебро", callback_data="admin:currency:silver", style=ButtonStyle.PRIMARY),
+            InlineKeyboardButton(text="🥇 Золото", callback_data="admin:currency:gold", style=ButtonStyle.PRIMARY),
+            InlineKeyboardButton(text="🎟 Фишки", callback_data="admin:currency:chips", style=ButtonStyle.PRIMARY),
         ],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="admin:cancel_flow", style=ButtonStyle.DANGER)],
     ])
@@ -543,7 +552,7 @@ def admin_delcar_confirm_kb(car_id: int) -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton(text="✅ Да, удалить полностью", callback_data=f"admin:delcar:confirm:{car_id}",
                                   style=ButtonStyle.DANGER),
-            InlineKeyboardButton(text="❌ Отмена", callback_data="admin:delcar:cancel"),
+            InlineKeyboardButton(text="❌ Отмена", callback_data="admin:delcar:cancel", style=ButtonStyle.DANGER),
         ]
     ])
 
@@ -552,9 +561,9 @@ def admin_catalog_nav_kb(page: int, total_pages: int) -> InlineKeyboardMarkup:
     nav = []
     if page > 1:
         nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"admin:catalog:{page-1}", style=ButtonStyle.PRIMARY))
-    nav.append(InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="noop"))
+    nav.append(InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="noop", style=ButtonStyle.PRIMARY))
     if page < total_pages:
-        nav.append(InlineKeyboardButton(text="➡️", callback_data=f"admin:catalog:{page+1}"))
+        nav.append(InlineKeyboardButton(text="➡️", callback_data=f"admin:catalog:{page+1}", style=ButtonStyle.PRIMARY))
     return InlineKeyboardMarkup(inline_keyboard=[
         nav,
         [InlineKeyboardButton(text=f"{BACK} в админку", callback_data="admin:back", style=ButtonStyle.PRIMARY)],

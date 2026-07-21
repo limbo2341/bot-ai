@@ -4,6 +4,7 @@ handlers/casino.py — обменник (полностью на кнопках,
 Мини-игры используют встроенные Telegram dice-анимации (message.dice)
 для честной и прозрачной механики.
 """
+import random
 from aiogram import Router, F
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
@@ -13,7 +14,10 @@ from aiogram.types import Message, CallbackQuery
 from db import get_db, add_user_exp
 from handlers.battlepass import increment_quest_progress
 from keyboards import casino_kb, exchange_kb, exchange_amount_kb
-from config import SILVER_TO_CHIP_RATE, CHIP_TO_SILVER_COMMISSION, EXCHANGE_QUICK_SILVER, EXCHANGE_QUICK_CHIPS
+from config import (
+    SILVER_TO_CHIP_RATE, CHIP_TO_SILVER_COMMISSION, EXCHANGE_QUICK_SILVER, EXCHANGE_QUICK_CHIPS,
+    CASINO_JACKPOT_CHANCE, CASINO_JACKPOT_GOLD,
+)
 
 router = Router(name="casino")
 
@@ -22,6 +26,18 @@ class ExchangeStates(StatesGroup):
     waiting_custom_amount = State()
 
 CASINO_XP_PER_PLAY = 5  # небольшой опыт профиля за каждую игру — стимул быть активным
+
+
+async def _maybe_jackpot(tg_id: int) -> int:
+    """Небольшой шанс джекпота на КАЖДУЮ игру в казино — не зависит от ставки/выигрыша,
+    редкий бесплатный источник золота. Возвращает начисленное золото (0, если не повезло)."""
+    if random.random() >= CASINO_JACKPOT_CHANCE:
+        return 0
+    gold = random.randint(*CASINO_JACKPOT_GOLD)
+    conn = await get_db()
+    await conn.execute("UPDATE users SET gold = gold + ? WHERE tg_id = ?", (gold, tg_id))
+    await conn.commit()
+    return gold
 
 
 @router.message(F.text == "🎰 Казино")
@@ -219,6 +235,10 @@ async def play_basketball(message: Message):
         await _adjust_chips(message.from_user.id, -bet)
         await message.answer(f"🏀 Мимо! Вы проиграли {bet:,} фишек.".replace(",", " "))
 
+    jackpot_gold = await _maybe_jackpot(message.from_user.id)
+    if jackpot_gold:
+        await message.answer(f"🎉 ДЖЕКПОТ КАЗИНО! Редкая удача принесла вам +{jackpot_gold} золота!")
+
 
 @router.message(Command("slot"))
 async def play_slot(message: Message):
@@ -256,6 +276,10 @@ async def play_slot(message: Message):
         await _adjust_chips(message.from_user.id, -bet)
         await message.answer(f"🎰 Не повезло! Вы проиграли {bet:,} фишек.".replace(",", " "))
 
+    jackpot_gold = await _maybe_jackpot(message.from_user.id)
+    if jackpot_gold:
+        await message.answer(f"🎉 ДЖЕКПОТ КАЗИНО! Редкая удача принесла вам +{jackpot_gold} золота!")
+
 
 @router.message(Command("dice"))
 async def play_dice(message: Message):
@@ -284,6 +308,10 @@ async def play_dice(message: Message):
         await message.answer(f"🎲 Вы проиграли! ({player_val} vs {dealer_val}) -{bet:,} фишек.".replace(",", " "))
     else:
         await message.answer(f"🎲 Ничья! ({player_val} vs {dealer_val}) Ставка возвращена.")
+
+    jackpot_gold = await _maybe_jackpot(message.from_user.id)
+    if jackpot_gold:
+        await message.answer(f"🎉 ДЖЕКПОТ КАЗИНО! Редкая удача принесла вам +{jackpot_gold} золота!")
 
 
 @router.callback_query(F.data.startswith("casino:info:"))

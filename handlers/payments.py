@@ -5,16 +5,23 @@ handlers/payments.py — нативные платежи Telegram Stars (XTR).
 import datetime
 import json
 from aiogram import Router, F, Bot
+from aiogram.filters import StateFilter
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
     Message, CallbackQuery, PreCheckoutQuery, LabeledPrice,
 )
 
 from db import get_db
 from keyboards import shop_kb
-from config import STAR_PACKS, STARS_CURRENCY, PREMIUM_BP_OPTIONS
+from config import STAR_PACKS, STARS_CURRENCY, PREMIUM_BP_OPTIONS, GOLD_PACKS
 from handlers.containers import grant_container_from_payment
 
 router = Router(name="payments")
+
+
+class DonateStates(StatesGroup):
+    waiting_amount = State()
 
 
 @router.message(F.text == "🛒 Магазин")
@@ -48,6 +55,59 @@ async def send_pack_invoice(callback: CallbackQuery, bot: Bot):
     await callback.answer()
 
 
+@router.callback_query(F.data.startswith("shop:gold:"))
+async def send_gold_pack_invoice(callback: CallbackQuery, bot: Bot):
+    key = callback.data.split(":")[2]
+    opt = GOLD_PACKS.get(key)
+    if not opt:
+        await callback.answer("Товар не найден", show_alert=True)
+        return
+    payload = json.dumps({"gold_pack": key, "tg_id": callback.from_user.id})
+    await bot.send_invoice(
+        chat_id=callback.from_user.id,
+        title=f"🥇 {opt['label']}",
+        description=f"Мгновенно начисляет {opt['gold']:,} золота на баланс.".replace(",", " "),
+        payload=payload,
+        provider_token="",
+        currency=STARS_CURRENCY,
+        prices=[LabeledPrice(label=opt["label"], amount=opt["price"])],
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "shop:donate")
+async def donate_start(callback: CallbackQuery, state: FSMContext):
+    await callback.message.answer(
+        "❤️ <b>Донат / Пожертвование</b>\n━━━━━━━━━━━━━━\n"
+        "Просто хотите поддержать проект? Введите количество Telegram Stars, "
+        "которое хотите отправить (от 1 до 10000). Никакой награды в игре за это не даётся — "
+        "это чистая поддержка разработки.",
+        parse_mode="HTML",
+    )
+    await state.set_state(DonateStates.waiting_amount)
+    await callback.answer()
+
+
+@router.message(StateFilter(DonateStates.waiting_amount))
+async def donate_amount(message: Message, state: FSMContext, bot: Bot):
+    await state.clear()
+    text = (message.text or "").strip()
+    if not text.isdigit() or not (1 <= int(text) <= 10000):
+        await message.answer("⚠️ Введите целое число от 1 до 10000.")
+        return
+    amount = int(text)
+    payload = json.dumps({"donation": True, "tg_id": message.from_user.id})
+    await bot.send_invoice(
+        chat_id=message.from_user.id,
+        title="❤️ Пожертвование Carcollection",
+        description="Спасибо, что поддерживаете проект! Награда в игре за донат не начисляется.",
+        payload=payload,
+        provider_token="",
+        currency=STARS_CURRENCY,
+        prices=[LabeledPrice(label="Пожертвование", amount=amount)],
+    )
+
+
 @router.pre_checkout_query()
 async def process_pre_checkout(pre_checkout_query: PreCheckoutQuery, bot: Bot):
     """Проверяем, что покупатель не забанен, прежде чем подтвердить оплату."""
@@ -76,6 +136,8 @@ async def process_successful_payment(message: Message):
     container_key = data.get("container")
     container_qty = int(data.get("qty", 1))
     premium_bp_option = data.get("premium_bp_option")
+    gold_pack_key = data.get("gold_pack")
+    is_donation = data.get("donation")
     pack = STAR_PACKS.get(pack_key)
 
     conn = await get_db()
@@ -85,6 +147,21 @@ async def process_successful_payment(message: Message):
         (tg_id, payment.total_amount, payment.invoice_payload, datetime.datetime.utcnow().isoformat()),
     )
     await conn.commit()
+
+    if is_donation:
+        await message.answer(
+            f"❤️ Спасибо огромное за поддержку в {payment.total_amount}⭐! "
+            f"Это очень помогает развитию проекта."
+        )
+        return
+
+    if gold_pack_key:
+        opt = GOLD_PACKS.get(gold_pack_key)
+        if opt:
+            await conn.execute("UPDATE users SET gold = gold + ? WHERE tg_id = ?", (opt["gold"], tg_id))
+            await conn.commit()
+            await message.answer(f"🥇 Начислено {opt['gold']:,} золота!".replace(",", " "))
+        return
 
     if container_key:
         result_text = await grant_container_from_payment(tg_id, container_key, qty=container_qty)
