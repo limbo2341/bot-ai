@@ -12,8 +12,8 @@ from aiogram.types import (
     Message, CallbackQuery, PreCheckoutQuery, LabeledPrice,
 )
 
-from db import get_db
-from keyboards import shop_kb
+from db import get_db, broadcast_message
+from keyboards import shop_kb, donate_announce_kb
 from config import STAR_PACKS, STARS_CURRENCY, PREMIUM_BP_OPTIONS, GOLD_PACKS
 from handlers.containers import grant_container_from_payment
 
@@ -125,7 +125,7 @@ async def process_pre_checkout(pre_checkout_query: PreCheckoutQuery, bot: Bot):
 
 
 @router.message(F.successful_payment)
-async def process_successful_payment(message: Message):
+async def process_successful_payment(message: Message, bot: Bot):
     payment = message.successful_payment
     tg_id = message.from_user.id
     try:
@@ -152,6 +152,14 @@ async def process_successful_payment(message: Message):
         await message.answer(
             f"❤️ Спасибо огромное за поддержку в {payment.total_amount}⭐! "
             f"Это очень помогает развитию проекта."
+        )
+        donor = message.from_user.username and f"@{message.from_user.username}" or message.from_user.first_name
+        await broadcast_message(
+            bot,
+            f"❤️ <b>{donor}</b> сделал пожертвование в {payment.total_amount}⭐ на развитие Carcollection! "
+            f"Огромное спасибо! 🙏",
+            reply_markup=donate_announce_kb(),
+            exclude_tg_id=tg_id,
         )
         return
 

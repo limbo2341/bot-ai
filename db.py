@@ -9,6 +9,7 @@ fetchone/fetchall, доступ к колонкам по имени через r
 "$1, $2, ...".
 """
 import os
+import asyncio
 import logging
 import datetime
 import urllib.parse
@@ -891,3 +892,24 @@ async def get_bot_stats() -> dict:
         "active_today": active_today,
         "top_active": [(r["tg_id"], r["username"], r["action_count"], r["level"]) for r in top_active],
     }
+
+
+# ---------------------------------------------------------------- Рассылка всем пользователям
+async def broadcast_message(bot, text: str, reply_markup=None, exclude_tg_id: int | None = None) -> tuple[int, int]:
+    """Рассылает текстовое сообщение всем незабаненным пользователям бота.
+    Возвращает (успешно, ошибок). Используется и админ-рассылкой, и авто-анонсами (донаты)."""
+    conn = await get_db()
+    cur = await conn.execute("SELECT tg_id FROM users WHERE is_banned = 0 AND blocked_bot = 0")
+    users = await cur.fetchall()
+
+    sent, failed = 0, 0
+    for row in users:
+        if exclude_tg_id and row["tg_id"] == exclude_tg_id:
+            continue
+        try:
+            await bot.send_message(row["tg_id"], text, parse_mode="HTML", reply_markup=reply_markup)
+            sent += 1
+        except Exception:
+            failed += 1
+        await asyncio.sleep(0.05)  # троттлинг, чтобы не упереться в лимиты Telegram
+    return sent, failed

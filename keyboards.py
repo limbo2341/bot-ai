@@ -170,6 +170,12 @@ def freecar_upgrade_kb(next_level: int, can_afford: bool) -> InlineKeyboardMarku
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def donate_announce_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❤️ Тоже поддержать", callback_data="shop:donate", style=ButtonStyle.SUCCESS)],
+    ])
+
+
 def shop_kb() -> InlineKeyboardMarkup:
     from config import GOLD_PACKS
     rows = [
