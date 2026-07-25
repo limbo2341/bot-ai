@@ -77,6 +77,27 @@ def _normalize(text: str) -> str:
 
 @router.message(
     F.chat.type.in_({"group", "supergroup"}),
+    F.text.func(lambda t: bool(t) and t.strip().lower().lstrip("/") in ("хелп", "help", "команды", "команда")),
+)
+async def group_help(message: Message):
+    text_cmds = ", ".join(f"«{w.capitalize()}»" for w in sorted(ALIAS_HANDLERS.keys()))
+    slash_cmds = ", ".join(f"/{c}" for c in sorted(COMMAND_ALIASES.keys()))
+    lines = [
+        "🤖 <b>Команды бота в этом чате</b>\n━━━━━━━━━━━━━━",
+        "Просто напишите слово (без /) — сработает как кнопка:",
+        text_cmds,
+        "\nТе же разделы через слэш-команды:",
+        slash_cmds,
+        "\n🎰 Мини-игры казино: /basket, /slot, /dice [ставка]",
+        "💸 Перевод серебра: /pay {сумма} — ответом на сообщение игрока",
+        "🎫 Активировать промокод: напишите слово «Промокод»",
+        "🚀 Открыть бота в личке: /start",
+    ]
+    await message.answer("\n".join(lines), parse_mode="HTML")
+
+
+@router.message(
+    F.chat.type.in_({"group", "supergroup"}),
     F.text.func(lambda t: bool(t) and t.strip().lower() == "промокод"),
 )
 async def promo_word_redirect(message: Message, bot: Bot):
