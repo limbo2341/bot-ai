@@ -77,7 +77,7 @@ def _normalize(text: str) -> str:
 
 @router.message(
     F.chat.type.in_({"group", "supergroup"}),
-    F.text.func(lambda t: bool(t) and "промокод" in t.lower()),
+    F.text.func(lambda t: bool(t) and t.strip().lower() == "промокод"),
 )
 async def promo_word_redirect(message: Message, bot: Bot):
     if message.from_user and message.from_user.is_bot:
@@ -85,8 +85,7 @@ async def promo_word_redirect(message: Message, bot: Bot):
     me = await bot.get_me()
     link = f"https://t.me/{me.username}?start=promo"
     await message.reply(
-        "🎫 Для активации промокода перейдите в бота — там сначала попросим подписаться "
-        "(если это требуется), а затем сразу дадим ввести код:",
+        "🎫 Для активации промокода перейдите в бота:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="🎫 Активировать промокод", url=link),
         ]]),
