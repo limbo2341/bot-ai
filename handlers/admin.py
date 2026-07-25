@@ -15,11 +15,12 @@ from aiogram.types import Message, CallbackQuery
 from db import (
     get_db, resolve_player, get_setting, set_setting,
     get_fsub_channels, add_fsub_channel, remove_fsub_channel, get_bot_stats, get_donation_history,
+    get_active_bot_groups,
 )
 from config import ADMIN_IDS, HEAD_ADMIN_ID, RARITY_EMOJI
 from keyboards import (
     admin_menu_kb, admin_catalog_nav_kb, admin_approval_kb, admin_currency_choice_kb, admin_delcar_confirm_kb,
-    promo_reward_type_kb, promo_container_choice_kb, fsub_menu_kb, admin_gift_list_kb,
+    promo_reward_type_kb, promo_container_choice_kb, fsub_menu_kb, admin_gift_list_kb, broadcast_target_kb,
 )
 
 router = Router(name="admin")
@@ -51,6 +52,7 @@ class AddSeasonStates(StatesGroup):
 
 class BroadcastStates(StatesGroup):
     content = State()
+    confirm_target = State()
 
 
 class LookupPlayerStates(StatesGroup):
@@ -1390,23 +1392,60 @@ async def broadcast_start(message: Message, state: FSMContext):
 
 @router.message(StateFilter(BroadcastStates.content))
 async def broadcast_send(message: Message, state: FSMContext, bot: Bot):
+    groups = await get_active_bot_groups()
+    await state.update_data(
+        text=message.text or message.caption,
+        photo_id=message.photo[-1].file_id if message.photo else None,
+    )
+    await state.set_state(BroadcastStates.confirm_target)
+    await message.answer(
+        "📍 Куда отправить рассылку?",
+        reply_markup=broadcast_target_kb(len(groups)),
+    )
+
+
+@router.callback_query(F.data.startswith("admin:broadcast:target:"), StateFilter(BroadcastStates.confirm_target))
+async def broadcast_target_chosen(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    if not is_admin(callback.from_user.id):
+        await callback.answer()
+        return
+    target = callback.data.split(":")[3]  # "bot" или "all"
+    data = await state.get_data()
+    text = data.get("text") or ""
+    photo_id = data.get("photo_id")
+    await state.clear()
+
     conn = await get_db()
     cur = await conn.execute("SELECT tg_id FROM users WHERE is_banned = 0")
     users = await cur.fetchall()
-    await state.clear()
+
+    groups = await get_active_bot_groups() if target == "all" else []
+    total_targets = len(users) + len(groups)
+    await callback.message.answer(f"📤 Начинаю рассылку для {total_targets} получателей...")
 
     sent, failed = 0, 0
-    await message.answer(f"📤 Начинаю рассылку для {len(users)} пользователей...")
-
     for row in users:
         try:
-            if message.photo:
-                await bot.send_photo(row["tg_id"], message.photo[-1].file_id, caption=message.caption or "")
+            if photo_id:
+                await bot.send_photo(row["tg_id"], photo_id, caption=text)
             else:
-                await bot.send_message(row["tg_id"], message.text or message.caption or "")
+                await bot.send_message(row["tg_id"], text)
             sent += 1
         except Exception:
             failed += 1
         await asyncio.sleep(0.05)  # троттлинг, чтобы не упереться в лимиты Telegram
 
-    await message.answer(f"✅ Рассылка завершена. Успешно: {sent}, ошибок: {failed}.")
+    for chat_id, title in groups:
+        try:
+            if photo_id:
+                await bot.send_photo(chat_id, photo_id, caption=text)
+            else:
+                await bot.send_message(chat_id, text)
+            sent += 1
+        except Exception:
+            failed += 1
+        await asyncio.sleep(0.05)
+
+    groups_note = f" (включая {len(groups)} групп)" if groups else ""
+    await callback.message.answer(f"✅ Рассылка завершена{groups_note}. Успешно: {sent}, ошибок: {failed}.")
+    await callback.answer()

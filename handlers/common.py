@@ -11,6 +11,7 @@ from aiogram.types import Message, CallbackQuery, ChatMemberUpdated
 from db import (
     get_db, ensure_user, has_garage_space, send_car_photo, get_setting, get_not_subscribed_channels,
     cumulative_exp_for_level, resolve_player, add_user_exp, set_user_blocked, is_user_premium,
+    upsert_bot_group, deactivate_bot_group,
 )
 from keyboards import (
     main_menu_kb, profile_kb, inventory_kb, inventory_item_kb,
@@ -20,22 +21,29 @@ from keyboards import (
 )
 from config import RARITY_EMOJI, CLAN_CREATION_COST, ADMIN_IDS, HEAD_ADMIN_ID, CLAN_MAX_LEVEL, \
     CLAN_INCOME_BONUS_PER_LEVEL, CLAN_XP_PER_LEVEL, REFERRAL_THRESHOLD, REFERRAL_REWARD_RARITY, \
-    AUCTION_UNLOCK_LEVEL
+    AUCTION_UNLOCK_LEVEL, REFERRAL_GOLD_TIER1, REFERRAL_GOLD_TIER2, CLAN_LEVELUP_GOLD
 
 router = Router(name="common")
 
 
 @router.my_chat_member()
 async def track_block_status(event: ChatMemberUpdated):
-    """Отслеживает блокировку/разблокировку бота пользователем — статистика в
-    админ-панели (сколько реально активных игроков) обновляется автоматически."""
-    if event.chat.type != "private":
+    """Отслеживает блокировку/разблокировку бота пользователем (для статистики) —
+    и, отдельно, добавление/удаление бота из групп (для рассылки 'ещё и в группы')."""
+    if event.chat.type == "private":
+        new_status = event.new_chat_member.status
+        if new_status == "kicked":
+            await set_user_blocked(event.from_user.id, True)
+        elif new_status == "member":
+            await set_user_blocked(event.from_user.id, False)
         return
-    new_status = event.new_chat_member.status
-    if new_status == "kicked":
-        await set_user_blocked(event.from_user.id, True)
-    elif new_status == "member":
-        await set_user_blocked(event.from_user.id, False)
+
+    if event.chat.type in ("group", "supergroup"):
+        new_status = event.new_chat_member.status
+        if new_status in ("member", "administrator"):
+            await upsert_bot_group(event.chat.id, event.chat.title or str(event.chat.id))
+        elif new_status in ("left", "kicked"):
+            await deactivate_bot_group(event.chat.id)
 
 
 class AvatarStates(StatesGroup):
@@ -201,6 +209,36 @@ async def _check_referral_milestone(bot, referrer_id: int) -> None:
         "SELECT COUNT(*) as cnt FROM users WHERE referred_by = ? AND referral_confirmed = 1", (referrer_id,)
     )
     count = (await cur.fetchone())["cnt"]
+
+    # Промежуточные золотые награды (3 и 5 рефералов) — чтобы не ждать все 10 до первой награды.
+    cur = await conn.execute(
+        "SELECT referral_gold_tier1_claimed, referral_gold_tier2_claimed FROM users WHERE tg_id = ?",
+        (referrer_id,),
+    )
+    tiers = await cur.fetchone()
+    tier1_target, tier1_gold = REFERRAL_GOLD_TIER1
+    tier2_target, tier2_gold = REFERRAL_GOLD_TIER2
+    if tiers and not tiers["referral_gold_tier1_claimed"] and count >= tier1_target:
+        await conn.execute(
+            "UPDATE users SET gold = gold + ?, referral_gold_tier1_claimed = 1 WHERE tg_id = ?",
+            (tier1_gold, referrer_id),
+        )
+        await conn.commit()
+        try:
+            await bot.send_message(referrer_id, f"🥇 {tier1_target} рефералов приглашено! +{tier1_gold} золота.")
+        except Exception:
+            pass
+    if tiers and not tiers["referral_gold_tier2_claimed"] and count >= tier2_target:
+        await conn.execute(
+            "UPDATE users SET gold = gold + ?, referral_gold_tier2_claimed = 1 WHERE tg_id = ?",
+            (tier2_gold, referrer_id),
+        )
+        await conn.commit()
+        try:
+            await bot.send_message(referrer_id, f"🥇 {tier2_target} рефералов приглашено! +{tier2_gold} золота.")
+        except Exception:
+            pass
+
     if count < REFERRAL_THRESHOLD:
         return
     cur = await conn.execute("SELECT referral_bonus_claimed FROM users WHERE tg_id = ?", (referrer_id,))
@@ -885,7 +923,7 @@ async def clan_donate_start(callback: CallbackQuery):
     await callback.answer()
 
 
-async def _do_clan_donate(tg_id: int, amount: int) -> str:
+async def _do_clan_donate(tg_id: int, amount: int, bot: Bot = None) -> str:
     conn = await get_db()
     cur = await conn.execute("SELECT clan_id, silver FROM users WHERE tg_id = ?", (tg_id,))
     u = await cur.fetchone()
@@ -900,6 +938,7 @@ async def _do_clan_donate(tg_id: int, amount: int) -> str:
     new_level = clan["clan_level"]
     while new_xp >= new_level * CLAN_XP_PER_LEVEL:
         new_level += 1
+    leveled_up = new_level > clan["clan_level"]
 
     await conn.execute("UPDATE users SET silver = silver - ? WHERE tg_id = ?", (amount, tg_id))
     await conn.execute("UPDATE clans SET clan_xp = ?, clan_level = ? WHERE clan_id = ?",
@@ -907,14 +946,31 @@ async def _do_clan_donate(tg_id: int, amount: int) -> str:
     await conn.commit()
     await add_user_exp(tg_id, 10)
 
-    level_up_note = f"\n🎉 Клан повысил уровень до {new_level}!" if new_level > clan["clan_level"] else ""
+    if leveled_up:
+        cur = await conn.execute("SELECT tg_id FROM users WHERE clan_id = ?", (u["clan_id"],))
+        members = await cur.fetchall()
+        for m in members:
+            await conn.execute("UPDATE users SET gold = gold + ? WHERE tg_id = ?", (CLAN_LEVELUP_GOLD, m["tg_id"]))
+        await conn.commit()
+        if bot:
+            for m in members:
+                try:
+                    await bot.send_message(
+                        m["tg_id"],
+                        f"🎉 Клан «{clan['clan_name']}» повысил уровень до {new_level}! "
+                        f"Все участники получили +{CLAN_LEVELUP_GOLD} золота 🥇",
+                    )
+                except Exception:
+                    pass
+
+    level_up_note = f"\n🎉 Клан повысил уровень до {new_level}! Все участники получили золото." if leveled_up else ""
     return f"✅ Вы вложили {amount:,} серебра в банк клана «{clan['clan_name']}». +10 XP профиля.{level_up_note}".replace(",", " ")
 
 
 @router.callback_query(F.data.startswith("clan:donate:amt:"))
-async def clan_donate_amount(callback: CallbackQuery):
+async def clan_donate_amount(callback: CallbackQuery, bot: Bot):
     amount = int(callback.data.split(":")[3])
-    text = await _do_clan_donate(callback.from_user.id, amount)
+    text = await _do_clan_donate(callback.from_user.id, amount, bot)
     await callback.message.answer(text, parse_mode="HTML")
     await callback.answer()
 
@@ -927,12 +983,12 @@ async def clan_donate_custom_start(callback: CallbackQuery, state: FSMContext):
 
 
 @router.message(StateFilter(ClanStates.waiting_donation))
-async def clan_donate_custom_amount(message: Message, state: FSMContext):
+async def clan_donate_custom_amount(message: Message, state: FSMContext, bot: Bot):
     await state.clear()
     if not message.text.strip().isdigit():
         await message.answer("⚠️ Введите целое число.")
         return
-    text = await _do_clan_donate(message.from_user.id, int(message.text.strip()))
+    text = await _do_clan_donate(message.from_user.id, int(message.text.strip()), bot)
     await message.answer(text, parse_mode="HTML")
 
 

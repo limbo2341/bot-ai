@@ -4,6 +4,7 @@ main.py — точка входа Carcollection bot.
 Для деплоя на Railway: Procfile должен содержать `worker: python main.py`.
 """
 import asyncio
+import datetime
 import logging
 
 from aiogram import Bot, Dispatcher
@@ -41,6 +42,53 @@ def _check_config() -> None:
             ", ".join(missing),
         )
         raise SystemExit(1)
+
+
+async def _income_notifier_loop(bot: Bot) -> None:
+    """Раз в несколько минут проверяет, у кого фарм уже накопился, и шлёт
+    напоминание — простой, но эффективный способ поднять активность (DAU),
+    возвращая игроков в бота, когда им реально есть что забрать."""
+    from handlers.garage import _current_cooldown_seconds
+    while True:
+        try:
+            conn = await get_db()
+            cur = await conn.execute(
+                """SELECT tg_id, last_claim_at, cooldown_reduction, income_notified_at FROM users
+                   WHERE last_claim_at IS NOT NULL AND blocked_bot = 0 AND is_banned = 0"""
+            )
+            rows = await cur.fetchall()
+            now = datetime.datetime.utcnow()
+            for row in rows:
+                try:
+                    last_claim = datetime.datetime.fromisoformat(row["last_claim_at"])
+                except (ValueError, TypeError):
+                    continue
+                cooldown = _current_cooldown_seconds(row["cooldown_reduction"])
+                if now < last_claim + datetime.timedelta(seconds=cooldown):
+                    continue
+                notified_at = row["income_notified_at"]
+                if notified_at:
+                    try:
+                        if datetime.datetime.fromisoformat(notified_at) >= last_claim:
+                            continue  # уже уведомляли об этом цикле накопления
+                    except ValueError:
+                        pass
+                try:
+                    await bot.send_message(
+                        row["tg_id"],
+                        "💰 Ваш доход с гаража накопился и готов к сбору! "
+                        "Загляните в «🚗 Гараж» → «💰 Собрать».",
+                    )
+                except Exception:
+                    pass
+                await conn.execute(
+                    "UPDATE users SET income_notified_at = ? WHERE tg_id = ?", (now.isoformat(), row["tg_id"])
+                )
+                await conn.commit()
+                await asyncio.sleep(0.05)
+        except Exception:
+            logging.exception("income notifier loop failed")
+        await asyncio.sleep(180)
 
 
 async def main() -> None:
@@ -168,6 +216,7 @@ async def main() -> None:
 
     logger.info("Запуск polling...")
     await bot.delete_webhook(drop_pending_updates=True)
+    asyncio.create_task(_income_notifier_loop(bot))
     await dp.start_polling(bot)
 
 

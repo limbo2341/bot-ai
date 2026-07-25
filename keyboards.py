@@ -507,24 +507,14 @@ def premium_container_qty_kb(is_premium: bool = False) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def admin_gift_list_kb(gifts: list, page: int, total_pages: int) -> InlineKeyboardMarkup:
-    """gifts: список (gift_id, emoji, star_count) для текущей страницы."""
-    rows = []
-    for gift_id, emoji, star_count in gifts:
-        rows.append([InlineKeyboardButton(
-            text=f"{emoji} — {star_count}⭐", callback_data=f"admin:gift:pick:{gift_id}",
-            style=ButtonStyle.SUCCESS,
-        )])
-    nav = []
-    if page > 1:
-        nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"admin:gift:page:{page-1}", style=ButtonStyle.PRIMARY))
-    nav.append(InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="noop", style=ButtonStyle.PRIMARY))
-    if page < total_pages:
-        nav.append(InlineKeyboardButton(text="➡️", callback_data=f"admin:gift:page:{page+1}", style=ButtonStyle.PRIMARY))
-    if nav:
-        rows.append(nav)
-    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="admin:cancel_flow", style=ButtonStyle.DANGER)])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+def broadcast_target_kb(group_count: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📩 Только в бот (игрокам)", callback_data="admin:broadcast:target:bot",
+                               style=ButtonStyle.SUCCESS)],
+        [InlineKeyboardButton(text=f"📩 Бот + группы ({group_count})", callback_data="admin:broadcast:target:all",
+                               style=ButtonStyle.SUCCESS)],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="admin:cancel_flow", style=ButtonStyle.DANGER)],
+    ])
 
 
 def admin_menu_kb(is_head: bool = False, admins_hidden: bool = False) -> InlineKeyboardMarkup:

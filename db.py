@@ -27,8 +27,8 @@ _conn_wrapper: "DBConnection | None" = None
 # чтобы новые игроки быстро доходили до аукциона, не застревая на раннем гринде.
 # С 10 уровня и выше — обычный темп.
 EARLY_LEVEL_CAP = 10
-EARLY_XP_PER_LEVEL = 400    # опыта на уровень с 1 по 10 (было 1000)
-EXP_PER_LEVEL = 1000        # опыта на уровень начиная с 11-го
+EARLY_XP_PER_LEVEL = 250    # опыта на уровень с 1 по 10 (было 1000, затем 400 — снова снижено)
+EXP_PER_LEVEL = 700         # опыта на уровень начиная с 11-го (было 1000)
 MAX_USER_LEVEL = 50         # потолок обычного игрока
 ADMIN_LEVEL = MAX_USER_LEVEL  # уровень, который получает админ автоматически
 
@@ -168,7 +168,10 @@ CREATE TABLE IF NOT EXISTS users (
     action_count BIGINT NOT NULL DEFAULT 0,
     blocked_bot INTEGER NOT NULL DEFAULT 0,
     premium_container_claimed_at TEXT,
-    duel_win_streak INTEGER NOT NULL DEFAULT 0
+    duel_win_streak INTEGER NOT NULL DEFAULT 0,
+    income_notified_at TEXT,
+    referral_gold_tier1_claimed INTEGER NOT NULL DEFAULT 0,
+    referral_gold_tier2_claimed INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS cars (
@@ -325,6 +328,13 @@ CREATE TABLE IF NOT EXISTS fsub_channels (
     invite_link TEXT NOT NULL,
     added_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS bot_groups (
+    chat_id BIGINT PRIMARY KEY,
+    title TEXT NOT NULL,
+    added_at TEXT NOT NULL,
+    is_active INTEGER NOT NULL DEFAULT 1
+);
 """.format(base_slots=BASE_GARAGE_SLOTS, base_hours=BASE_MAX_FARM_HOURS)
 
 # Изменения схемы, добавленные ПОСЛЕ первого деплоя (для баз, где таблицы уже
@@ -341,6 +351,9 @@ MIGRATIONS = [
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_bot INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_container_claimed_at TEXT",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS duel_win_streak INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS income_notified_at TEXT",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_gold_tier1_claimed INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_gold_tier2_claimed INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_daily_bonus_at TEXT",
     "ALTER TABLE cars ADD COLUMN IF NOT EXISTS telegram_file_id TEXT",
     "ALTER TABLE cars ADD COLUMN IF NOT EXISTS photo_is_custom INTEGER NOT NULL DEFAULT 0",
@@ -939,3 +952,27 @@ async def get_donation_history(limit: int = 20) -> dict:
         "total_stars": totals["total"],
         "total_count": totals["cnt"],
     }
+
+
+# ---------------------------------------------------------------- Группы бота (для рассылки)
+async def upsert_bot_group(chat_id: int, title: str) -> None:
+    conn = await get_db()
+    await conn.execute(
+        """INSERT INTO bot_groups (chat_id, title, added_at, is_active) VALUES (?, ?, ?, 1)
+           ON CONFLICT (chat_id) DO UPDATE SET title = EXCLUDED.title, is_active = 1""",
+        (chat_id, title, datetime.datetime.utcnow().isoformat()),
+    )
+    await conn.commit()
+
+
+async def deactivate_bot_group(chat_id: int) -> None:
+    conn = await get_db()
+    await conn.execute("UPDATE bot_groups SET is_active = 0 WHERE chat_id = ?", (chat_id,))
+    await conn.commit()
+
+
+async def get_active_bot_groups() -> list:
+    conn = await get_db()
+    cur = await conn.execute("SELECT chat_id, title FROM bot_groups WHERE is_active = 1")
+    rows = await cur.fetchall()
+    return [(r["chat_id"], r["title"]) for r in rows]
