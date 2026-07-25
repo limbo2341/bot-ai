@@ -91,6 +91,7 @@ class ReplyBugStates(StatesGroup):
 
 class PromoCreateStates(StatesGroup):
     waiting_code = State()
+    choosing_type = State()
     waiting_amount = State()
     waiting_car_id = State()
     waiting_max_uses = State()
@@ -1069,17 +1070,42 @@ async def promo_create_code(message: Message, state: FSMContext):
     if await cur.fetchone():
         await message.answer("⚠️ Такой промокод уже существует. Введите другой.")
         return
-    await state.update_data(code=code)
-    await message.answer("🎁 Выберите тип награды:", reply_markup=promo_reward_type_kb())
+    await state.update_data(code=code, rewards=[])
+    await state.set_state(PromoCreateStates.choosing_type)
+    await message.answer("🎁 Выберите тип награды (можно добавить несколько наград на один промокод):",
+                          reply_markup=promo_reward_type_kb(can_finish=False))
 
 
-@router.callback_query(F.data.startswith("promo:type:"), StateFilter(PromoCreateStates.waiting_code))
+def _describe_reward(reward_type: str, reward_value: str) -> str:
+    if reward_type in ("silver", "gold", "chips"):
+        label = {"silver": "серебра", "gold": "золота", "chips": "фишек"}[reward_type]
+        return f"{int(reward_value):,} {label}".replace(",", " ")
+    if reward_type == "container":
+        from handlers.containers import CONTAINER_LABELS
+        return CONTAINER_LABELS.get(reward_value, reward_value)
+    if reward_type == "car":
+        return f"машина (car_id {reward_value})"
+    return f"{reward_type}: {reward_value}"
+
+
+async def _prompt_next_reward_or_done(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    rewards = data.get("rewards", [])
+    await state.set_state(PromoCreateStates.choosing_type)
+    summary = "\n".join(f"• {_describe_reward(r['reward_type'], r['reward_value'])}" for r in rewards)
+    await message.answer(
+        f"✅ Добавлено:\n{summary}\n\nДобавить ещё награду или завершить?",
+        reply_markup=promo_reward_type_kb(can_finish=True),
+    )
+
+
+@router.callback_query(F.data.startswith("promo:type:"), StateFilter(PromoCreateStates.choosing_type))
 async def promo_create_type(callback: CallbackQuery, state: FSMContext):
     if not is_head_admin(callback.from_user.id):
         await callback.answer()
         return
     reward_type = callback.data.split(":")[2]
-    await state.update_data(reward_type=reward_type)
+    await state.update_data(pending_reward_type=reward_type)
     if reward_type in ("silver", "gold", "chips"):
         await state.set_state(PromoCreateStates.waiting_amount)
         await callback.message.answer(f"✏️ Введите количество ({reward_type}):")
@@ -1099,10 +1125,12 @@ async def promo_create_container(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
     container_key = callback.data.split(":")[2]
-    await state.update_data(reward_value=container_key)
-    await state.set_state(PromoCreateStates.waiting_max_uses)
-    await callback.message.answer("🔢 Введите максимальное число активаций (0 — без ограничений):")
+    data = await state.get_data()
+    rewards = data.get("rewards", [])
+    rewards.append({"reward_type": "container", "reward_value": container_key})
+    await state.update_data(rewards=rewards)
     await callback.answer()
+    await _prompt_next_reward_or_done(callback.message, state)
 
 
 @router.message(StateFilter(PromoCreateStates.waiting_amount))
@@ -1113,9 +1141,11 @@ async def promo_create_amount(message: Message, state: FSMContext):
     if not message.text.strip().isdigit():
         await message.answer("⚠️ Введите целое число.")
         return
-    await state.update_data(reward_value=message.text.strip())
-    await state.set_state(PromoCreateStates.waiting_max_uses)
-    await message.answer("🔢 Введите максимальное число активаций (0 — без ограничений):")
+    data = await state.get_data()
+    rewards = data.get("rewards", [])
+    rewards.append({"reward_type": data["pending_reward_type"], "reward_value": message.text.strip()})
+    await state.update_data(rewards=rewards)
+    await _prompt_next_reward_or_done(message, state)
 
 
 @router.message(StateFilter(PromoCreateStates.waiting_car_id))
@@ -1132,9 +1162,25 @@ async def promo_create_car_id(message: Message, state: FSMContext):
     if not await cur.fetchone():
         await message.answer("⚠️ Машина с таким car_id не найдена.")
         return
-    await state.update_data(reward_value=str(car_id))
+    data = await state.get_data()
+    rewards = data.get("rewards", [])
+    rewards.append({"reward_type": "car", "reward_value": str(car_id)})
+    await state.update_data(rewards=rewards)
+    await _prompt_next_reward_or_done(message, state)
+
+
+@router.callback_query(F.data == "promo:done", StateFilter(PromoCreateStates.choosing_type))
+async def promo_create_done(callback: CallbackQuery, state: FSMContext):
+    if not is_head_admin(callback.from_user.id):
+        await callback.answer()
+        return
+    data = await state.get_data()
+    if not data.get("rewards"):
+        await callback.answer("Добавьте хотя бы одну награду", show_alert=True)
+        return
     await state.set_state(PromoCreateStates.waiting_max_uses)
-    await message.answer("🔢 Введите максимальное число активаций (0 — без ограничений):")
+    await callback.message.answer("🔢 Введите максимальное число активаций (0 — без ограничений):")
+    await callback.answer()
 
 
 @router.message(StateFilter(PromoCreateStates.waiting_max_uses))
@@ -1170,18 +1216,25 @@ async def promo_create_finalize(message: Message, state: FSMContext):
     conn = await get_db()
     await conn.execute(
         """INSERT INTO promo_codes (code, reward_type, reward_value, max_uses, expires_at, created_by, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (data["code"], data["reward_type"], data["reward_value"], data.get("max_uses"),
-         expires_at, message.from_user.id, datetime.datetime.utcnow().isoformat()),
+           VALUES (?, 'multi', '', ?, ?, ?, ?)""",
+        (data["code"], data.get("max_uses"), expires_at, message.from_user.id, datetime.datetime.utcnow().isoformat()),
     )
+    for r in data["rewards"]:
+        await conn.execute(
+            "INSERT INTO promo_code_rewards (code, reward_type, reward_value) VALUES (?, ?, ?)",
+            (data["code"], r["reward_type"], r["reward_value"]),
+        )
     await conn.commit()
 
     limit_text = f"{data.get('max_uses')} активаций" if data.get("max_uses") else "без ограничений по активациям"
     expiry_text = f"до {expires_at[:10]}" if expires_at else "бессрочный"
+    rewards_summary = "\n".join(f"• {_describe_reward(r['reward_type'], r['reward_value'])}" for r in data["rewards"])
     await message.answer(
         f"✅ Промокод <code>{data['code']}</code> создан!\n"
-        f"Награда: {data['reward_type']} — {data['reward_value']}\n"
-        f"Лимит: {limit_text}\nСрок: {expiry_text}",
+        f"Награды:\n{rewards_summary}\n"
+        f"Лимит: {limit_text}\nСрок: {expiry_text}\n\n"
+        f"ℹ️ Когда лимит активаций исчерпается, промокод автоматически удалится — "
+        f"после этого можно будет создать новый промокод с таким же текстом.",
         parse_mode="HTML",
     )
 

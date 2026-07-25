@@ -71,8 +71,8 @@ def bonuses_menu_kb(is_premium: bool = False) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def promo_reward_type_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
+def promo_reward_type_kb(can_finish: bool = False) -> InlineKeyboardMarkup:
+    rows = [
         [
             InlineKeyboardButton(text="💰 Серебро", callback_data="promo:type:silver", style=ButtonStyle.PRIMARY),
             InlineKeyboardButton(text="🥇 Золото", callback_data="promo:type:gold", style=ButtonStyle.PRIMARY),
@@ -82,8 +82,12 @@ def promo_reward_type_kb() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="📦 Контейнер", callback_data="promo:type:container", style=ButtonStyle.PRIMARY),
             InlineKeyboardButton(text="🚗 Машина", callback_data="promo:type:car", style=ButtonStyle.PRIMARY),
         ],
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="admin:cancel_flow", style=ButtonStyle.DANGER)],
-    ])
+    ]
+    if can_finish:
+        rows.append([InlineKeyboardButton(text="✅ Готово, к лимитам", callback_data="promo:done",
+                                           style=ButtonStyle.SUCCESS)])
+    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="admin:cancel_flow", style=ButtonStyle.DANGER)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def promo_container_choice_kb() -> InlineKeyboardMarkup:

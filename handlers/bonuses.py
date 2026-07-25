@@ -206,40 +206,62 @@ async def promo_redeem_check(message: Message, state: FSMContext):
     reward_type = promo["reward_type"]
     reward_value = promo["reward_value"]
 
-    if reward_type in ("silver", "gold", "chips"):
-        amount = int(reward_value)
-        await conn.execute(f"UPDATE users SET {reward_type} = {reward_type} + ? WHERE tg_id = ?", (amount, tg_id))
-        result_text = f"✅ Промокод активирован! Начислено: {amount:,} ({reward_type}).".replace(",", " ")
+    async def _apply_single_reward(r_type: str, r_value: str) -> str:
+        if r_type in ("silver", "gold", "chips"):
+            amount = int(r_value)
+            await conn.execute(f"UPDATE users SET {r_type} = {r_type} + ? WHERE tg_id = ?", (amount, tg_id))
+            return f"{amount:,} ({r_type})".replace(",", " ")
+        if r_type == "container":
+            from handlers.containers import add_container_to_inventory, CONTAINER_LABELS
+            await add_container_to_inventory(tg_id, r_value)
+            return CONTAINER_LABELS.get(r_value, r_value)
+        if r_type == "car":
+            car_id = int(r_value)
+            if not await has_garage_space(tg_id):
+                raise RuntimeError("🚫 Ваш гараж переполнен! Освободите место и введите промокод снова.")
+            cur2 = await conn.execute("SELECT name, brand FROM cars WHERE car_id = ?", (car_id,))
+            car = await cur2.fetchone()
+            if not car:
+                raise RuntimeError("⚠️ Машина из этого промокода больше не существует в каталоге.")
+            await conn.execute(
+                "INSERT INTO user_garage (tg_id, car_id, acquired_date) VALUES (?, ?, ?)",
+                (tg_id, car_id, datetime.datetime.utcnow().isoformat()),
+            )
+            return f"машина <b>{car['brand']} {car['name']}</b>"
+        raise RuntimeError("⚠️ Неизвестный тип награды промокода.")
 
-    elif reward_type == "container":
-        from handlers.containers import add_container_to_inventory, CONTAINER_LABELS
-        await add_container_to_inventory(tg_id, reward_value)
-        result_text = f"✅ Промокод активирован! Получен: {CONTAINER_LABELS.get(reward_value, reward_value)}."
-
-    elif reward_type == "car":
-        car_id = int(reward_value)
-        if not await has_garage_space(tg_id):
-            await message.answer("🚫 Ваш гараж переполнен! Освободите место и введите промокод снова.")
-            return
-        cur = await conn.execute("SELECT name, brand FROM cars WHERE car_id = ?", (car_id,))
-        car = await cur.fetchone()
-        if not car:
-            await message.answer("⚠️ Машина из этого промокода больше не существует в каталоге.")
-            return
-        await conn.execute(
-            "INSERT INTO user_garage (tg_id, car_id, acquired_date) VALUES (?, ?, ?)",
-            (tg_id, car_id, datetime.datetime.utcnow().isoformat()),
-        )
-        result_text = f"✅ Промокод активирован! Получена машина: <b>{car['brand']} {car['name']}</b>."
-
-    else:
-        await message.answer("⚠️ Неизвестный тип награды промокода.")
+    try:
+        if reward_type == "multi":
+            cur = await conn.execute(
+                "SELECT reward_type, reward_value FROM promo_code_rewards WHERE code = ?", (code,)
+            )
+            rewards = await cur.fetchall()
+            if not rewards:
+                await message.answer("⚠️ У этого промокода не настроены награды. Сообщите администрации.")
+                return
+            parts = []
+            for r in rewards:
+                parts.append(await _apply_single_reward(r["reward_type"], r["reward_value"]))
+            result_text = "✅ Промокод активирован! Получено: " + ", ".join(parts) + "."
+        else:
+            part = await _apply_single_reward(reward_type, reward_value)
+            result_text = f"✅ Промокод активирован! Получено: {part}."
+    except RuntimeError as e:
+        await message.answer(str(e))
         return
 
-    await conn.execute("UPDATE promo_codes SET uses_count = uses_count + 1 WHERE code = ?", (code,))
+    new_uses_count = promo["uses_count"] + 1
+    await conn.execute("UPDATE promo_codes SET uses_count = ? WHERE code = ?", (new_uses_count, code))
     await conn.execute(
         "INSERT INTO promo_redemptions (code, tg_id, redeemed_at) VALUES (?, ?, ?)",
         (code, tg_id, datetime.datetime.utcnow().isoformat()),
     )
+
+    # Промокод исчерпан — удаляем его целиком (и историю активаций), чтобы админ
+    # мог создать новый промокод с тем же текстом «с нуля».
+    if promo["max_uses"] is not None and new_uses_count >= promo["max_uses"]:
+        await conn.execute("DELETE FROM promo_codes WHERE code = ?", (code,))  # каскадно удалит promo_code_rewards
+        await conn.execute("DELETE FROM promo_redemptions WHERE code = ?", (code,))
+
     await conn.commit()
     await message.answer(result_text, parse_mode="HTML")

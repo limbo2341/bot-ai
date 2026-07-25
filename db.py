@@ -309,6 +309,13 @@ CREATE TABLE IF NOT EXISTS promo_codes (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS promo_code_rewards (
+    reward_id SERIAL PRIMARY KEY,
+    code TEXT NOT NULL REFERENCES promo_codes(code) ON DELETE CASCADE,
+    reward_type TEXT NOT NULL,
+    reward_value TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS promo_redemptions (
     code TEXT NOT NULL,
     tg_id BIGINT NOT NULL,
