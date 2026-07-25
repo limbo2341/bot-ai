@@ -508,13 +508,38 @@ def premium_container_qty_kb(is_premium: bool = False) -> InlineKeyboardMarkup:
 
 
 def broadcast_target_kb(group_count: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
+    rows = [
         [InlineKeyboardButton(text="📩 Только в бот (игрокам)", callback_data="admin:broadcast:target:bot",
                                style=ButtonStyle.SUCCESS)],
-        [InlineKeyboardButton(text=f"📩 Бот + группы ({group_count})", callback_data="admin:broadcast:target:all",
-                               style=ButtonStyle.SUCCESS)],
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="admin:cancel_flow", style=ButtonStyle.DANGER)],
-    ])
+    ]
+    if group_count:
+        rows.append([InlineKeyboardButton(
+            text=f"📩 Бот + ВСЕ группы ({group_count})", callback_data="admin:broadcast:target:all",
+            style=ButtonStyle.SUCCESS,
+        )])
+        rows.append([InlineKeyboardButton(
+            text="📩 Бот + выбрать группы", callback_data="admin:broadcast:target:pick",
+            style=ButtonStyle.SUCCESS,
+        )])
+    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="admin:cancel_flow", style=ButtonStyle.DANGER)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def broadcast_group_pick_kb(groups: list, selected: set) -> InlineKeyboardMarkup:
+    """groups: список (chat_id, title). selected: множество выбранных chat_id."""
+    rows = []
+    for chat_id, title in groups:
+        mark = "✅ " if chat_id in selected else ""
+        rows.append([InlineKeyboardButton(
+            text=f"{mark}{title}", callback_data=f"admin:broadcast:grouptoggle:{chat_id}",
+            style=ButtonStyle.SUCCESS if chat_id in selected else None,
+        )])
+    rows.append([InlineKeyboardButton(
+        text=f"📤 Отправить выбранным ({len(selected)})", callback_data="admin:broadcast:groupsend",
+        style=ButtonStyle.SUCCESS,
+    )])
+    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="admin:cancel_flow", style=ButtonStyle.DANGER)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def admin_menu_kb(is_head: bool = False, admins_hidden: bool = False) -> InlineKeyboardMarkup:
@@ -539,6 +564,10 @@ def admin_menu_kb(is_head: bool = False, admins_hidden: bool = False) -> InlineK
         rows.append([InlineKeyboardButton(text=toggle_text, callback_data="admin:toggle_leaderboard", style=ButtonStyle.PRIMARY)])
         rows.append([InlineKeyboardButton(text="🔔 Обязательная подписка", callback_data="admin:fsub:menu", style=ButtonStyle.PRIMARY)])
         rows.append([InlineKeyboardButton(text="🎁 Подарить Telegram-подарок", callback_data="admin:gift:start",
+                                           style=ButtonStyle.SUCCESS)])
+        rows.append([InlineKeyboardButton(text="📋 Список групп бота", callback_data="admin:groups:list",
+                                           style=ButtonStyle.PRIMARY)])
+        rows.append([InlineKeyboardButton(text="➕ Добавить бота в чат", callback_data="admin:groups:addlink",
                                            style=ButtonStyle.SUCCESS)])
     rows.append([InlineKeyboardButton(text=f"{BACK} в игровое меню", callback_data="nav:main", style=ButtonStyle.PRIMARY)])
     return InlineKeyboardMarkup(inline_keyboard=rows)

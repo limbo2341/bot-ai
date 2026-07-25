@@ -22,6 +22,7 @@ from config import ADMIN_IDS, HEAD_ADMIN_ID, RARITY_EMOJI
 from keyboards import (
     admin_menu_kb, admin_catalog_nav_kb, admin_approval_kb, admin_currency_choice_kb, admin_delcar_confirm_kb,
     promo_reward_type_kb, promo_container_choice_kb, fsub_menu_kb, admin_gift_list_kb, broadcast_target_kb,
+    broadcast_group_pick_kb,
 )
 
 router = Router(name="admin")
@@ -54,6 +55,7 @@ class AddSeasonStates(StatesGroup):
 class BroadcastStates(StatesGroup):
     content = State()
     confirm_target = State()
+    picking_groups = State()
 
 
 class LookupPlayerStates(StatesGroup):
@@ -191,6 +193,50 @@ async def admin_stats(callback: CallbackQuery):
         await callback.message.answer("\n".join(lines), parse_mode="HTML")
     except Exception as e:
         await callback.message.answer(f"⚠️ Не удалось собрать статистику: {e}")
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin:groups:list")
+async def admin_groups_list(callback: CallbackQuery):
+    if not is_head_admin(callback.from_user.id):
+        await callback.answer("🔒 Доступно только главному администратору", show_alert=True)
+        return
+    try:
+        groups = await get_active_bot_groups()
+        if not groups:
+            await callback.message.answer(
+                "📋 <b>Группы бота</b>\n━━━━━━━━━━━━━━\n"
+                "Пока бот не отмечен ни в одной группе. Он подхватывает группу автоматически, "
+                "как только там появится любое сообщение после подключения этой функции.",
+                parse_mode="HTML",
+            )
+            await callback.answer()
+            return
+        lines = [f"📋 <b>Группы бота</b> ({len(groups)})\n━━━━━━━━━━━━━━"]
+        for chat_id, title in groups:
+            lines.append(f"• {title} (<code>{chat_id}</code>)")
+        await callback.message.answer("\n".join(lines), parse_mode="HTML")
+    except Exception as e:
+        await callback.message.answer(f"⚠️ Не удалось получить список групп: {e}")
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin:groups:addlink")
+async def admin_groups_addlink(callback: CallbackQuery, bot: Bot):
+    if not is_head_admin(callback.from_user.id):
+        await callback.answer("🔒 Доступно только главному администратору", show_alert=True)
+        return
+    me = await bot.get_me()
+    link = f"https://t.me/{me.username}?startgroup=true"
+    await callback.message.answer(
+        "➕ <b>Добавление бота в чат</b>\n━━━━━━━━━━━━━━\n"
+        "⚠️ Важно: Telegram НЕ разрешает ботам самостоятельно находить и вступать в чаты — "
+        "это может сделать только человек, добавив бота вручную. Зато вот ссылка, которая "
+        "сама открывает выбор группы — останется только тапнуть нужный чат:\n\n"
+        f"{link}\n\n"
+        "Отправьте эту ссылку себе или тем, у кого есть права добавлять ботов в нужные группы.",
+        parse_mode="HTML",
+    )
     await callback.answer()
 
 
@@ -1405,24 +1451,13 @@ async def broadcast_send(message: Message, state: FSMContext, bot: Bot):
     )
 
 
-@router.callback_query(F.data.startswith("admin:broadcast:target:"), StateFilter(BroadcastStates.confirm_target))
-async def broadcast_target_chosen(callback: CallbackQuery, state: FSMContext, bot: Bot):
-    if not is_admin(callback.from_user.id):
-        await callback.answer()
-        return
-    target = callback.data.split(":")[3]  # "bot" или "all"
-    data = await state.get_data()
-    text = data.get("text") or ""
-    photo_id = data.get("photo_id")
-    await state.clear()
-
+async def _run_broadcast(message: Message, bot: Bot, text: str, photo_id: str | None, groups: list) -> None:
     conn = await get_db()
     cur = await conn.execute("SELECT tg_id FROM users WHERE is_banned = 0")
     users = await cur.fetchall()
 
-    groups = await get_active_bot_groups() if target == "all" else []
     total_targets = len(users) + len(groups)
-    await callback.message.answer(f"📤 Начинаю рассылку для {total_targets} получателей...")
+    await message.answer(f"📤 Начинаю рассылку для {total_targets} получателей...")
 
     sent, failed = 0, 0
     for row in users:
@@ -1451,5 +1486,68 @@ async def broadcast_target_chosen(callback: CallbackQuery, state: FSMContext, bo
         await asyncio.sleep(0.05)
 
     groups_note = f" (включая {len(groups)} групп)" if groups else ""
-    await callback.message.answer(f"✅ Рассылка завершена{groups_note}. Успешно: {sent}, ошибок: {failed}.")
+    await message.answer(f"✅ Рассылка завершена{groups_note}. Успешно: {sent}, ошибок: {failed}.")
+
+
+@router.callback_query(F.data.startswith("admin:broadcast:target:"), StateFilter(BroadcastStates.confirm_target))
+async def broadcast_target_chosen(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    if not is_admin(callback.from_user.id):
+        await callback.answer()
+        return
+    target = callback.data.split(":")[3]  # "bot", "all" или "pick"
+    data = await state.get_data()
+    text = data.get("text") or ""
+    photo_id = data.get("photo_id")
+
+    if target == "pick":
+        groups = await get_active_bot_groups()
+        await state.update_data(selected_groups=[])
+        await state.set_state(BroadcastStates.picking_groups)
+        await callback.message.answer(
+            "☑️ Выберите группы для рассылки (можно несколько):",
+            reply_markup=broadcast_group_pick_kb(groups, set()),
+        )
+        await callback.answer()
+        return
+
+    await state.clear()
+    groups = await get_active_bot_groups() if target == "all" else []
+    await _run_broadcast(callback.message, bot, text, photo_id, groups)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("admin:broadcast:grouptoggle:"), StateFilter(BroadcastStates.picking_groups))
+async def broadcast_group_toggle(callback: CallbackQuery, state: FSMContext):
+    chat_id = int(callback.data.split(":")[3])
+    data = await state.get_data()
+    selected = set(data.get("selected_groups", []))
+    if chat_id in selected:
+        selected.discard(chat_id)
+    else:
+        selected.add(chat_id)
+    await state.update_data(selected_groups=list(selected))
+
+    groups = await get_active_bot_groups()
+    try:
+        await callback.message.edit_reply_markup(reply_markup=broadcast_group_pick_kb(groups, selected))
+    except Exception:
+        pass
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin:broadcast:groupsend", StateFilter(BroadcastStates.picking_groups))
+async def broadcast_group_send(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    data = await state.get_data()
+    text = data.get("text") or ""
+    photo_id = data.get("photo_id")
+    selected = set(data.get("selected_groups", []))
+    await state.clear()
+
+    if not selected:
+        await callback.answer("Вы не выбрали ни одной группы", show_alert=True)
+        return
+
+    all_groups = await get_active_bot_groups()
+    groups = [(chat_id, title) for chat_id, title in all_groups if chat_id in selected]
+    await _run_broadcast(callback.message, bot, text, photo_id, groups)
     await callback.answer()
