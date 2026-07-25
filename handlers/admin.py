@@ -656,6 +656,24 @@ async def _perform_admin_action(action_type: str, target_tg_id: int, currency: s
         label = f"{car['brand']} {car['name']}" if car else f"#{car_id}"
         return f"обновлено фото для {label}"
 
+    elif action_type == "create_promo":
+        cur = await conn.execute("SELECT 1 FROM promo_codes WHERE code = ?", (payload["code"],))
+        if await cur.fetchone():
+            return f"⚠️ промокод {payload['code']} уже существует — не создан"
+        await conn.execute(
+            """INSERT INTO promo_codes (code, reward_type, reward_value, max_uses, expires_at, created_by, created_at)
+               VALUES (?, 'multi', '', ?, ?, ?, ?)""",
+            (payload["code"], payload.get("max_uses"), payload.get("expires_at"), target_tg_id,
+             datetime.datetime.utcnow().isoformat()),
+        )
+        for r in payload["rewards"]:
+            await conn.execute(
+                "INSERT INTO promo_code_rewards (code, reward_type, reward_value) VALUES (?, ?, ?)",
+                (payload["code"], r["reward_type"], r["reward_value"]),
+            )
+        await conn.commit()
+        return f"промокод {payload['code']} создан"
+
     return "неизвестное действие"
 
 
@@ -1045,11 +1063,12 @@ async def bug_reply_send(message: Message, state: FSMContext):
         await message.answer("⚠️ Не удалось отправить ответ (возможно, пользователь заблокировал бота).")
 
 
-# ---------------------------------------------------------------- Создание промокодов (только главный админ)
+# ---------------------------------------------------------------- Создание промокодов (все админы, с подтверждением
+# главного админа для не-главных — см. _execute_or_request_approval)
 @router.callback_query(F.data == "promo:create")
 async def promo_create_start(callback: CallbackQuery, state: FSMContext):
-    if not is_head_admin(callback.from_user.id):
-        await callback.answer("Только главный администратор может создавать промокоды", show_alert=True)
+    if not is_admin(callback.from_user.id):
+        await callback.answer("Недостаточно прав", show_alert=True)
         return
     await callback.message.answer("🎟 Введите текст промокода (латиница/цифры, без пробелов):")
     await state.set_state(PromoCreateStates.waiting_code)
@@ -1058,7 +1077,7 @@ async def promo_create_start(callback: CallbackQuery, state: FSMContext):
 
 @router.message(StateFilter(PromoCreateStates.waiting_code))
 async def promo_create_code(message: Message, state: FSMContext):
-    if not is_head_admin(message.from_user.id):
+    if not is_admin(message.from_user.id):
         await state.clear()
         return
     code = message.text.strip().upper().replace(" ", "")
@@ -1101,7 +1120,7 @@ async def _prompt_next_reward_or_done(message: Message, state: FSMContext) -> No
 
 @router.callback_query(F.data.startswith("promo:type:"), StateFilter(PromoCreateStates.choosing_type))
 async def promo_create_type(callback: CallbackQuery, state: FSMContext):
-    if not is_head_admin(callback.from_user.id):
+    if not is_admin(callback.from_user.id):
         await callback.answer()
         return
     reward_type = callback.data.split(":")[2]
@@ -1121,7 +1140,7 @@ async def promo_create_type(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("promo:container:"))
 async def promo_create_container(callback: CallbackQuery, state: FSMContext):
-    if not is_head_admin(callback.from_user.id):
+    if not is_admin(callback.from_user.id):
         await callback.answer()
         return
     container_key = callback.data.split(":")[2]
@@ -1135,7 +1154,7 @@ async def promo_create_container(callback: CallbackQuery, state: FSMContext):
 
 @router.message(StateFilter(PromoCreateStates.waiting_amount))
 async def promo_create_amount(message: Message, state: FSMContext):
-    if not is_head_admin(message.from_user.id):
+    if not is_admin(message.from_user.id):
         await state.clear()
         return
     if not message.text.strip().isdigit():
@@ -1150,7 +1169,7 @@ async def promo_create_amount(message: Message, state: FSMContext):
 
 @router.message(StateFilter(PromoCreateStates.waiting_car_id))
 async def promo_create_car_id(message: Message, state: FSMContext):
-    if not is_head_admin(message.from_user.id):
+    if not is_admin(message.from_user.id):
         await state.clear()
         return
     if not message.text.strip().isdigit():
@@ -1171,7 +1190,7 @@ async def promo_create_car_id(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == "promo:done", StateFilter(PromoCreateStates.choosing_type))
 async def promo_create_done(callback: CallbackQuery, state: FSMContext):
-    if not is_head_admin(callback.from_user.id):
+    if not is_admin(callback.from_user.id):
         await callback.answer()
         return
     data = await state.get_data()
@@ -1185,7 +1204,7 @@ async def promo_create_done(callback: CallbackQuery, state: FSMContext):
 
 @router.message(StateFilter(PromoCreateStates.waiting_max_uses))
 async def promo_create_max_uses(message: Message, state: FSMContext):
-    if not is_head_admin(message.from_user.id):
+    if not is_admin(message.from_user.id):
         await state.clear()
         return
     if not message.text.strip().isdigit():
@@ -1198,8 +1217,8 @@ async def promo_create_max_uses(message: Message, state: FSMContext):
 
 
 @router.message(StateFilter(PromoCreateStates.waiting_duration))
-async def promo_create_finalize(message: Message, state: FSMContext):
-    if not is_head_admin(message.from_user.id):
+async def promo_create_finalize(message: Message, state: FSMContext, bot: Bot):
+    if not is_admin(message.from_user.id):
         await state.clear()
         return
     if not message.text.strip().isdigit():
@@ -1213,25 +1232,29 @@ async def promo_create_finalize(message: Message, state: FSMContext):
     if days > 0:
         expires_at = (datetime.datetime.utcnow() + datetime.timedelta(days=days)).isoformat()
 
-    conn = await get_db()
-    await conn.execute(
-        """INSERT INTO promo_codes (code, reward_type, reward_value, max_uses, expires_at, created_by, created_at)
-           VALUES (?, 'multi', '', ?, ?, ?, ?)""",
-        (data["code"], data.get("max_uses"), expires_at, message.from_user.id, datetime.datetime.utcnow().isoformat()),
-    )
-    for r in data["rewards"]:
-        await conn.execute(
-            "INSERT INTO promo_code_rewards (code, reward_type, reward_value) VALUES (?, ?, ?)",
-            (data["code"], r["reward_type"], r["reward_value"]),
-        )
-    await conn.commit()
-
     limit_text = f"{data.get('max_uses')} активаций" if data.get("max_uses") else "без ограничений по активациям"
     expiry_text = f"до {expires_at[:10]}" if expires_at else "бессрочный"
     rewards_summary = "\n".join(f"• {_describe_reward(r['reward_type'], r['reward_value'])}" for r in data["rewards"])
+    detail = (
+        f"создать промокод {data['code']} (награды: "
+        f"{', '.join(_describe_reward(r['reward_type'], r['reward_value']) for r in data['rewards'])}; "
+        f"лимит: {limit_text}; срок: {expiry_text})"
+    )
+
+    payload = {
+        "code": data["code"],
+        "rewards": data["rewards"],
+        "max_uses": data.get("max_uses"),
+        "expires_at": expires_at,
+    }
+    status_text = await _execute_or_request_approval(
+        bot, message.from_user.id, "create_promo",
+        target_tg_id=message.from_user.id, detail=detail, payload=payload,
+    )
+
     await message.answer(
-        f"✅ Промокод <code>{data['code']}</code> создан!\n"
-        f"Награды:\n{rewards_summary}\n"
+        f"{status_text}\n\n"
+        f"🎟 Промокод: <code>{data['code']}</code>\nНаграды:\n{rewards_summary}\n"
         f"Лимит: {limit_text}\nСрок: {expiry_text}\n\n"
         f"ℹ️ Когда лимит активаций исчерпается, промокод автоматически удалится — "
         f"после этого можно будет создать новый промокод с таким же текстом.",

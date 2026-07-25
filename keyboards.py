@@ -560,10 +560,9 @@ def admin_menu_kb(is_head: bool = False, admins_hidden: bool = False) -> InlineK
         [InlineKeyboardButton(text="📋 Каталог машин по редкости", callback_data="admin:catalog:1", style=ButtonStyle.PRIMARY)],
         [InlineKeyboardButton(text="📊 Статистика бота", callback_data="admin:stats", style=ButtonStyle.PRIMARY)],
         [InlineKeyboardButton(text="💸 История донатов", callback_data="admin:donations", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(text="🎟 Создать промокод", callback_data="promo:create", style=ButtonStyle.SUCCESS)],
     ]
     if is_head:
-        rows.append([InlineKeyboardButton(text="🎟 Создать промокод", callback_data="promo:create",
-                                           style=ButtonStyle.SUCCESS)])
         toggle_text = "✅ Показать админов в топе богачей" if admins_hidden else "🚫 Скрыть админов из топа богачей"
         rows.append([InlineKeyboardButton(text=toggle_text, callback_data="admin:toggle_leaderboard", style=ButtonStyle.PRIMARY)])
         rows.append([InlineKeyboardButton(text="🔔 Обязательная подписка", callback_data="admin:fsub:menu", style=ButtonStyle.PRIMARY)])
