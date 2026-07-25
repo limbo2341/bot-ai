@@ -49,6 +49,8 @@ async def _income_notifier_loop(bot: Bot) -> None:
     напоминание — простой, но эффективный способ поднять активность (DAU),
     возвращая игроков в бота, когда им реально есть что забрать."""
     from handlers.garage import _current_cooldown_seconds
+    from aiogram.exceptions import TelegramForbiddenError
+    from db import set_user_blocked
     while True:
         try:
             conn = await get_db()
@@ -79,6 +81,9 @@ async def _income_notifier_loop(bot: Bot) -> None:
                         "💰 Ваш доход с гаража накопился и готов к сбору! "
                         "Загляните в «🚗 Гараж» → «💰 Собрать».",
                     )
+                except TelegramForbiddenError:
+                    await set_user_blocked(row["tg_id"], True)
+                    continue
                 except Exception:
                     pass
                 await conn.execute(
@@ -124,11 +129,16 @@ async def main() -> None:
     # первым, реферал никогда бы не сохранялся (пользователь уже существовал бы к этому моменту).
     @dp.message.outer_middleware()
     async def ensure_user_middleware(handler, event, data):
-        from db import ensure_user, touch_user_activity
+        from db import ensure_user, touch_user_activity, upsert_bot_group
         is_start_command = bool(event.text) and event.text.split()[0].split("@")[0] == "/start"
         if event.from_user and not event.from_user.is_bot and not is_start_command:
             await ensure_user(event.from_user.id, event.from_user.username)
             await touch_user_activity(event.from_user.id)
+        if event.chat.type in ("group", "supergroup"):
+            # my_chat_member фиксирует только НОВОЕ добавление бота в группу — группы,
+            # в которых бот уже состоял до этого обновления, подхватываем так, пассивно,
+            # при любом сообщении в группе.
+            await upsert_bot_group(event.chat.id, event.chat.title or str(event.chat.id))
         return await handler(event, data)
 
     @dp.callback_query.outer_middleware()

@@ -911,6 +911,8 @@ async def get_bot_stats() -> dict:
 async def broadcast_message(bot, text: str, reply_markup=None, exclude_tg_id: int | None = None) -> tuple[int, int]:
     """Рассылает текстовое сообщение всем незабаненным пользователям бота.
     Возвращает (успешно, ошибок). Используется и админ-рассылкой, и авто-анонсами (донаты)."""
+    from aiogram.exceptions import TelegramForbiddenError
+
     conn = await get_db()
     cur = await conn.execute("SELECT tg_id FROM users WHERE is_banned = 0 AND blocked_bot = 0")
     users = await cur.fetchall()
@@ -922,6 +924,9 @@ async def broadcast_message(bot, text: str, reply_markup=None, exclude_tg_id: in
         try:
             await bot.send_message(row["tg_id"], text, parse_mode="HTML", reply_markup=reply_markup)
             sent += 1
+        except TelegramForbiddenError:
+            failed += 1
+            await set_user_blocked(row["tg_id"], True)
         except Exception:
             failed += 1
         await asyncio.sleep(0.05)  # троттлинг, чтобы не упереться в лимиты Telegram

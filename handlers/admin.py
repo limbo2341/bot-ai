@@ -7,6 +7,7 @@ import datetime
 import math
 import json
 from aiogram import Router, F, Bot
+from aiogram.exceptions import TelegramForbiddenError
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -15,7 +16,7 @@ from aiogram.types import Message, CallbackQuery
 from db import (
     get_db, resolve_player, get_setting, set_setting,
     get_fsub_channels, add_fsub_channel, remove_fsub_channel, get_bot_stats, get_donation_history,
-    get_active_bot_groups,
+    get_active_bot_groups, set_user_blocked,
 )
 from config import ADMIN_IDS, HEAD_ADMIN_ID, RARITY_EMOJI
 from keyboards import (
@@ -1431,6 +1432,9 @@ async def broadcast_target_chosen(callback: CallbackQuery, state: FSMContext, bo
             else:
                 await bot.send_message(row["tg_id"], text)
             sent += 1
+        except TelegramForbiddenError:
+            failed += 1
+            await set_user_blocked(row["tg_id"], True)  # чтобы больше не пытаться и статистика была верной
         except Exception:
             failed += 1
         await asyncio.sleep(0.05)  # троттлинг, чтобы не упереться в лимиты Telegram
