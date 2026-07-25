@@ -9,10 +9,10 @@ handlers/groupcmds.py — поддержка бота в группах:
 текст, ожидаемый другими хендлерами в состояниях FSM (ввод сумм, названий и т.д.).
 """
 import inspect
-from aiogram import Router, F
+from aiogram import Router, F, Bot
 from aiogram.filters import Command, CommandObject, StateFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
 from db import get_db
 from handlers import auctions, battlepass, casino, common, containers, duels, freecar, garage, payments, bonuses
@@ -73,6 +73,24 @@ async def _call(handler, message: Message, state: FSMContext):
 
 def _normalize(text: str) -> str:
     return text.strip().lower().lstrip("!/.")
+
+
+@router.message(
+    F.chat.type.in_({"group", "supergroup"}),
+    F.text.func(lambda t: bool(t) and "промокод" in t.lower()),
+)
+async def promo_word_redirect(message: Message, bot: Bot):
+    if message.from_user and message.from_user.is_bot:
+        return
+    me = await bot.get_me()
+    link = f"https://t.me/{me.username}?start=promo"
+    await message.reply(
+        "🎫 Для активации промокода перейдите в бота — там сначала попросим подписаться "
+        "(если это требуется), а затем сразу дадим ввести код:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="🎫 Активировать промокод", url=link),
+        ]]),
+    )
 
 
 @router.message(F.text.func(lambda t: bool(t) and _normalize(t) in ALIAS_HANDLERS))

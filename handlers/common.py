@@ -25,6 +25,9 @@ from config import RARITY_EMOJI, CLAN_CREATION_COST, ADMIN_IDS, HEAD_ADMIN_ID, C
 
 router = Router(name="common")
 
+# Локальный импорт handlers.bonuses в момент использования (не на верхнем уровне модуля) —
+# чтобы порядок регистрации роутеров в main.py не создавал риска циклического импорта.
+
 
 @router.my_chat_member()
 async def track_block_status(event: ChatMemberUpdated):
@@ -64,7 +67,7 @@ class BugReportStates(StatesGroup):
 
 # ---------------------------------------------------------------- /start
 @router.message(CommandStart())
-async def cmd_start(message: Message, command: CommandObject):
+async def cmd_start(message: Message, command: CommandObject, state: FSMContext):
     referrer_id = None
     if command.args and command.args.startswith("ref_") and command.args[4:].isdigit():
         referrer_id = int(command.args[4:])
@@ -72,6 +75,23 @@ async def cmd_start(message: Message, command: CommandObject):
     is_new = await ensure_user(message.from_user.id, message.from_user.username, referrer_id)
     is_admin = message.from_user.id in ADMIN_IDS
     is_private = message.chat.type == "private"
+
+    if command.args == "promo":
+        # Пришли по ссылке из группы (там написали слово "промокод") — сразу к делу,
+        # но сперва проверяем обязательную подписку, если она настроена.
+        not_subscribed = await get_not_subscribed_channels(message.bot, message.from_user.id)
+        if not_subscribed:
+            await state.update_data(pending_intent="promo")
+            await message.answer(
+                "🔔 Чтобы активировать промокод, сначала подпишитесь на каналы/группы ниже, "
+                "затем нажмите «✅ Я подписался»:",
+                reply_markup=fsub_check_kb(not_subscribed),
+            )
+            return
+        from handlers.bonuses import PromoRedeemStates
+        await state.set_state(PromoRedeemStates.waiting_code)
+        await message.answer("🎫 Введите промокод для активации:")
+        return
 
     if is_new:
         text = (
@@ -158,7 +178,7 @@ async def menu_back_to_main(message: Message):
 
 
 @router.callback_query(F.data == "fsub:check")
-async def fsub_check(callback: CallbackQuery, bot: Bot):
+async def fsub_check(callback: CallbackQuery, bot: Bot, state: FSMContext):
     not_subscribed = await get_not_subscribed_channels(bot, callback.from_user.id)
     if not_subscribed:
         await callback.answer("❌ Вы всё ещё не подписаны на все каналы/группы ниже", show_alert=True)
@@ -173,6 +193,16 @@ async def fsub_check(callback: CallbackQuery, bot: Bot):
         await callback.message.delete()
     except Exception:
         pass
+
+    data = await state.get_data()
+    if data.get("pending_intent") == "promo":
+        await state.update_data(pending_intent=None)
+        from handlers.bonuses import PromoRedeemStates
+        await state.set_state(PromoRedeemStates.waiting_code)
+        await callback.message.answer("✅ Спасибо за подписку! Теперь введите промокод для активации:")
+        await callback.answer()
+        return
+
     await callback.message.answer(
         "✅ Спасибо за подписку! Теперь вам доступны все функции бота.",
         reply_markup=main_menu_kb(is_admin),
