@@ -1500,8 +1500,9 @@ async def unban_user(message: Message):
 # ---------------------------------------------------------------- /broadcast
 async def _broadcast_prompt(message: Message, state: FSMContext):
     await message.answer(
-        "📢 Отправьте сообщение для рассылки (текст, можно с фото). "
-        "Оно будет разослано всем пользователям бота."
+        "📢 Отправьте контент для рассылки — подойдёт что угодно: текст, фото, видео, "
+        "музыка, голосовое, GIF, документ. Форматирование текста (жирный, курсив, ссылки) "
+        "сохранится как есть. Оно будет разослано всем пользователям бота."
     )
     await state.set_state(BroadcastStates.content)
 
@@ -1516,10 +1517,10 @@ async def broadcast_start(message: Message, state: FSMContext):
 @router.message(StateFilter(BroadcastStates.content))
 async def broadcast_send(message: Message, state: FSMContext, bot: Bot):
     groups = await get_active_bot_groups()
-    await state.update_data(
-        text=message.text or message.caption,
-        photo_id=message.photo[-1].file_id if message.photo else None,
-    )
+    # Запоминаем не текст/фото по отдельности, а сам исходный чат+id сообщения —
+    # copy_message затем скопирует ЛЮБОЙ тип контента (фото/видео/музыку/голосовое/
+    # гифку/документ/текст) один в один, включая форматирование шрифта и ссылки.
+    await state.update_data(source_chat_id=message.chat.id, source_message_id=message.message_id)
     await state.set_state(BroadcastStates.confirm_target)
     await message.answer(
         "📍 Куда отправить рассылку?",
@@ -1527,7 +1528,8 @@ async def broadcast_send(message: Message, state: FSMContext, bot: Bot):
     )
 
 
-async def _run_broadcast(message: Message, bot: Bot, text: str, photo_id: str | None, groups: list) -> None:
+async def _run_broadcast(message: Message, bot: Bot, source_chat_id: int, source_message_id: int,
+                          groups: list) -> None:
     conn = await get_db()
     cur = await conn.execute("SELECT tg_id FROM users WHERE is_banned = 0")
     users = await cur.fetchall()
@@ -1538,10 +1540,8 @@ async def _run_broadcast(message: Message, bot: Bot, text: str, photo_id: str | 
     sent, failed = 0, 0
     for row in users:
         try:
-            if photo_id:
-                await bot.send_photo(row["tg_id"], photo_id, caption=text)
-            else:
-                await bot.send_message(row["tg_id"], text)
+            await bot.copy_message(chat_id=row["tg_id"], from_chat_id=source_chat_id,
+                                    message_id=source_message_id)
             sent += 1
         except TelegramForbiddenError:
             failed += 1
@@ -1552,10 +1552,8 @@ async def _run_broadcast(message: Message, bot: Bot, text: str, photo_id: str | 
 
     for chat_id, title in groups:
         try:
-            if photo_id:
-                await bot.send_photo(chat_id, photo_id, caption=text)
-            else:
-                await bot.send_message(chat_id, text)
+            await bot.copy_message(chat_id=chat_id, from_chat_id=source_chat_id,
+                                    message_id=source_message_id)
             sent += 1
         except Exception:
             failed += 1
@@ -1572,8 +1570,8 @@ async def broadcast_target_chosen(callback: CallbackQuery, state: FSMContext, bo
         return
     target = callback.data.split(":")[3]  # "bot", "all" или "pick"
     data = await state.get_data()
-    text = data.get("text") or ""
-    photo_id = data.get("photo_id")
+    source_chat_id = data.get("source_chat_id")
+    source_message_id = data.get("source_message_id")
 
     if target == "pick":
         groups = await get_active_bot_groups()
@@ -1588,7 +1586,7 @@ async def broadcast_target_chosen(callback: CallbackQuery, state: FSMContext, bo
 
     await state.clear()
     groups = await get_active_bot_groups() if target == "all" else []
-    await _run_broadcast(callback.message, bot, text, photo_id, groups)
+    await _run_broadcast(callback.message, bot, source_chat_id, source_message_id, groups)
     await callback.answer()
 
 
@@ -1614,8 +1612,8 @@ async def broadcast_group_toggle(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "admin:broadcast:groupsend", StateFilter(BroadcastStates.picking_groups))
 async def broadcast_group_send(callback: CallbackQuery, state: FSMContext, bot: Bot):
     data = await state.get_data()
-    text = data.get("text") or ""
-    photo_id = data.get("photo_id")
+    source_chat_id = data.get("source_chat_id")
+    source_message_id = data.get("source_message_id")
     selected = set(data.get("selected_groups", []))
     await state.clear()
 
@@ -1625,5 +1623,5 @@ async def broadcast_group_send(callback: CallbackQuery, state: FSMContext, bot: 
 
     all_groups = await get_active_bot_groups()
     groups = [(chat_id, title) for chat_id, title in all_groups if chat_id in selected]
-    await _run_broadcast(callback.message, bot, text, photo_id, groups)
+    await _run_broadcast(callback.message, bot, source_chat_id, source_message_id, groups)
     await callback.answer()

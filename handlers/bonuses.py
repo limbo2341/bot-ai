@@ -29,7 +29,7 @@ class PromoRedeemStates(StatesGroup):
     waiting_code = State()
 
 
-@router.message(F.text == "🎁 Бонусы")
+@router.message(F.text == "💝 Бонусы")
 async def show_bonuses_menu(message: Message):
     is_premium = await is_user_premium(message.from_user.id)
     await message.answer(

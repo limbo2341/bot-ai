@@ -16,11 +16,13 @@ BACK = "⬅️ Назад"
 def main_menu_kb(is_admin: bool = False) -> ReplyKeyboardMarkup:
     """Компактное главное меню: самые частые действия — сразу на виду,
     остальное разложено по разделам (см. menu_*_kb ниже) — ни одна функция
-    никуда не делась, просто спрятана на уровень глубже."""
+    никуда не делась, просто спрятана на уровень глубже. Иконки во всех
+    разделах уникальны (не повторяются между категориями и пунктами), чтобы
+    было интуитивно понятно, куда нажимать."""
     kb = [
         [KeyboardButton(text="🚗 Гараж"), KeyboardButton(text="💰 Собрать")],
-        [KeyboardButton(text="📈 Прогресс"), KeyboardButton(text="⚔️ PvP и соц.")],
-        [KeyboardButton(text="🎡 Экономика"), KeyboardButton(text="🎁 Ещё")],
+        [KeyboardButton(text="📈 Прогресс"), KeyboardButton(text="⚔️ Бои и Клан")],
+        [KeyboardButton(text="🏪 Магазин и апгрейды"), KeyboardButton(text="🎀 Бонусы и ещё")],
     ]
     if is_admin:
         kb.append([KeyboardButton(text="🛠 Админ-панель")])
@@ -53,7 +55,7 @@ def menu_economy_kb() -> ReplyKeyboardMarkup:
 
 def menu_more_kb() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[
-        [KeyboardButton(text="🎁 Бонусы"), KeyboardButton(text="🐞 Сообщить о баге")],
+        [KeyboardButton(text="💝 Бонусы"), KeyboardButton(text="🐞 Сообщить о баге")],
         [KeyboardButton(text="⬅️ Главное меню")],
     ])
 

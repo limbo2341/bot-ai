@@ -137,9 +137,9 @@ async def nav_shortcut(callback: CallbackQuery):
     is_admin = callback.from_user.id in ADMIN_IDS
     kb_map = {
         "progress": ("📈 Прогресс", menu_progress_kb()),
-        "pvp": ("⚔️ PvP и социальное", menu_pvp_kb()),
-        "economy": ("🎡 Экономика", menu_economy_kb()),
-        "more": ("🎁 Ещё", menu_more_kb()),
+        "pvp": ("⚔️ Бои и Клан", menu_pvp_kb()),
+        "economy": ("🏪 Магазин и апгрейды", menu_economy_kb()),
+        "more": ("🎀 Бонусы и ещё", menu_more_kb()),
         "main": ("🏠 Главное меню", main_menu_kb(is_admin)),
     }
     title, kb = kb_map.get(target, ("🏠 Главное меню", main_menu_kb(is_admin)))
@@ -149,26 +149,47 @@ async def nav_shortcut(callback: CallbackQuery):
 
 @router.message(F.text == "📈 Прогресс")
 async def menu_progress(message: Message):
-    await message.answer("📈 <b>Прогресс</b>\n━━━━━━━━━━━━━━\nВыберите раздел:", parse_mode="HTML",
-                          reply_markup=menu_progress_kb())
+    await message.answer(
+        "📈 <b>Прогресс</b>\n━━━━━━━━━━━━━━\n"
+        "👤 Профиль — уровень, статистика, топ игроков\n"
+        "🎫 Боевой пропуск — сезонные награды\n"
+        "📦 Инвентарь — предметы и контейнеры",
+        parse_mode="HTML", reply_markup=menu_progress_kb(),
+    )
 
 
-@router.message(F.text == "⚔️ PvP и соц.")
+@router.message(F.text == "⚔️ Бои и Клан")
 async def menu_pvp(message: Message):
-    await message.answer("⚔️ <b>PvP и социальное</b>\n━━━━━━━━━━━━━━\nВыберите раздел:", parse_mode="HTML",
-                          reply_markup=menu_pvp_kb())
+    await message.answer(
+        "⚔️ <b>Бои и Клан</b>\n━━━━━━━━━━━━━━\n"
+        "⚔️ Дуэли — сражайтесь с другими игроками\n"
+        "🏛 Клан — совместные бонусы к доходу\n"
+        "🔨 Аукцион — покупка/продажа машин игрокам\n"
+        "🎰 Казино — мини-игры на фишки",
+        parse_mode="HTML", reply_markup=menu_pvp_kb(),
+    )
 
 
-@router.message(F.text == "🎡 Экономика")
+@router.message(F.text == "🏪 Магазин и апгрейды")
 async def menu_economy(message: Message):
-    await message.answer("🎡 <b>Экономика</b>\n━━━━━━━━━━━━━━\nВыберите раздел:", parse_mode="HTML",
-                          reply_markup=menu_economy_kb())
+    await message.answer(
+        "🏪 <b>Магазин и апгрейды</b>\n━━━━━━━━━━━━━━\n"
+        "🎁 Бесплатная машина — раз в несколько часов\n"
+        "⚙️ Улучшения — фарм, ангар, часы\n"
+        "🛒 Магазин — паки за Stars\n"
+        "📥 Контейнеры — шанс на редкие машины",
+        parse_mode="HTML", reply_markup=menu_economy_kb(),
+    )
 
 
-@router.message(F.text == "🎁 Ещё")
+@router.message(F.text == "🎀 Бонусы и ещё")
 async def menu_more(message: Message):
-    await message.answer("🎁 <b>Ещё</b>\n━━━━━━━━━━━━━━\nВыберите раздел:", parse_mode="HTML",
-                          reply_markup=menu_more_kb())
+    await message.answer(
+        "🎀 <b>Бонусы и ещё</b>\n━━━━━━━━━━━━━━\n"
+        "💝 Бонусы — ежедневный бонус, рефералы, промокоды\n"
+        "🐞 Сообщить о баге — если что-то пошло не так",
+        parse_mode="HTML", reply_markup=menu_more_kb(),
+    )
 
 
 @router.message(F.text == "⬅️ Главное меню")
