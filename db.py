@@ -342,6 +342,20 @@ CREATE TABLE IF NOT EXISTS bot_groups (
     added_at TEXT NOT NULL,
     is_active INTEGER NOT NULL DEFAULT 1
 );
+
+CREATE TABLE IF NOT EXISTS ad_target_groups (
+    chat_id BIGINT PRIMARY KEY,
+    added_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS ad_campaign (
+    id INTEGER PRIMARY KEY DEFAULT 1,
+    source_chat_id BIGINT,
+    source_message_id BIGINT,
+    interval_minutes INTEGER,
+    is_active INTEGER NOT NULL DEFAULT 0,
+    last_sent_at TEXT
+);
 """.format(base_slots=BASE_GARAGE_SLOTS, base_hours=BASE_MAX_FARM_HOURS)
 
 # Изменения схемы, добавленные ПОСЛЕ первого деплоя (для баз, где таблицы уже
@@ -988,3 +1002,62 @@ async def get_active_bot_groups() -> list:
     cur = await conn.execute("SELECT chat_id, title FROM bot_groups WHERE is_active = 1")
     rows = await cur.fetchall()
     return [(r["chat_id"], r["title"]) for r in rows]
+
+
+# ---------------------------------------------------------------- Реклама бота по группам (только глав. админ)
+async def get_ad_target_groups() -> list:
+    conn = await get_db()
+    cur = await conn.execute(
+        """SELECT g.chat_id, g.title FROM ad_target_groups a
+           JOIN bot_groups g ON g.chat_id = a.chat_id"""
+    )
+    rows = await cur.fetchall()
+    return [(r["chat_id"], r["title"]) for r in rows]
+
+
+async def set_ad_target_groups(chat_ids: list) -> None:
+    """Полностью заменяет список групп для рекламы выбранным набором."""
+    conn = await get_db()
+    await conn.execute("DELETE FROM ad_target_groups")
+    now = datetime.datetime.utcnow().isoformat()
+    for chat_id in chat_ids:
+        await conn.execute(
+            "INSERT INTO ad_target_groups (chat_id, added_at) VALUES (?, ?) ON CONFLICT (chat_id) DO NOTHING",
+            (chat_id, now),
+        )
+    await conn.commit()
+
+
+async def get_ad_campaign() -> dict | None:
+    conn = await get_db()
+    cur = await conn.execute(
+        "SELECT source_chat_id, source_message_id, interval_minutes, is_active, last_sent_at "
+        "FROM ad_campaign WHERE id = 1"
+    )
+    row = await cur.fetchone()
+    return row
+
+
+async def set_ad_campaign(source_chat_id: int, source_message_id: int, interval_minutes: int) -> None:
+    conn = await get_db()
+    await conn.execute(
+        """INSERT INTO ad_campaign (id, source_chat_id, source_message_id, interval_minutes, is_active, last_sent_at)
+           VALUES (1, ?, ?, ?, 1, ?)
+           ON CONFLICT (id) DO UPDATE SET source_chat_id = EXCLUDED.source_chat_id,
+               source_message_id = EXCLUDED.source_message_id, interval_minutes = EXCLUDED.interval_minutes,
+               is_active = 1, last_sent_at = EXCLUDED.last_sent_at""",
+        (source_chat_id, source_message_id, interval_minutes, datetime.datetime.utcnow().isoformat()),
+    )
+    await conn.commit()
+
+
+async def stop_ad_campaign() -> None:
+    conn = await get_db()
+    await conn.execute("UPDATE ad_campaign SET is_active = 0 WHERE id = 1")
+    await conn.commit()
+
+
+async def touch_ad_campaign_sent() -> None:
+    conn = await get_db()
+    await conn.execute("UPDATE ad_campaign SET last_sent_at = ? WHERE id = 1", (datetime.datetime.utcnow().isoformat(),))
+    await conn.commit()

@@ -548,6 +548,37 @@ def broadcast_group_pick_kb(groups: list, selected: set) -> InlineKeyboardMarkup
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def ads_group_pick_kb(groups: list, selected: set) -> InlineKeyboardMarkup:
+    """groups: список (chat_id, title) — ВСЕ группы бота, обновляется каждый раз при открытии."""
+    rows = []
+    for chat_id, title in groups:
+        mark = "✅ " if chat_id in selected else ""
+        rows.append([InlineKeyboardButton(
+            text=f"{mark}{title}", callback_data=f"admin:ads:grouptoggle:{chat_id}",
+            style=ButtonStyle.SUCCESS if chat_id in selected else None,
+        )])
+    rows.append([InlineKeyboardButton(text=f"💾 Сохранить выбор ({len(selected)})",
+                                       callback_data="admin:ads:groupsave", style=ButtonStyle.SUCCESS)])
+    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="admin:cancel_flow", style=ButtonStyle.DANGER)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def ads_menu_kb(is_active: bool, group_count: int) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(text=f"✏️ Редактировать группы ({group_count})",
+                               callback_data="admin:ads:editgroups", style=ButtonStyle.PRIMARY)],
+    ]
+    if is_active:
+        rows.append([InlineKeyboardButton(text="⏹ Остановить рекламу", callback_data="admin:ads:stop",
+                                           style=ButtonStyle.DANGER)])
+    else:
+        rows.append([InlineKeyboardButton(text="▶️ Начать рекламу", callback_data="admin:ads:start",
+                                           style=ButtonStyle.SUCCESS)])
+    rows.append([InlineKeyboardButton(text="⬅️ Назад в админку", callback_data="admin:back",
+                                       style=ButtonStyle.PRIMARY)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def admin_menu_kb(is_head: bool = False, admins_hidden: bool = False) -> InlineKeyboardMarkup:
     rows = [
         [InlineKeyboardButton(text="➕ Добавить машину", callback_data="admin:addcar", style=ButtonStyle.SUCCESS)],
@@ -573,6 +604,8 @@ def admin_menu_kb(is_head: bool = False, admins_hidden: bool = False) -> InlineK
         rows.append([InlineKeyboardButton(text="📋 Список групп бота", callback_data="admin:groups:list",
                                            style=ButtonStyle.PRIMARY)])
         rows.append([InlineKeyboardButton(text="➕ Добавить бота в чат", callback_data="admin:groups:addlink",
+                                           style=ButtonStyle.SUCCESS)])
+        rows.append([InlineKeyboardButton(text="📣 Реклама бота", callback_data="admin:ads:menu",
                                            style=ButtonStyle.SUCCESS)])
     rows.append([InlineKeyboardButton(text=f"{BACK} в игровое меню", callback_data="nav:main", style=ButtonStyle.PRIMARY)])
     return InlineKeyboardMarkup(inline_keyboard=rows)

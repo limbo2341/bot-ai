@@ -17,12 +17,13 @@ from db import (
     get_db, resolve_player, get_setting, set_setting,
     get_fsub_channels, add_fsub_channel, remove_fsub_channel, get_bot_stats, get_donation_history,
     get_active_bot_groups, set_user_blocked,
+    get_ad_target_groups, set_ad_target_groups, get_ad_campaign, set_ad_campaign, stop_ad_campaign,
 )
 from config import ADMIN_IDS, HEAD_ADMIN_ID, RARITY_EMOJI
 from keyboards import (
     admin_menu_kb, admin_catalog_nav_kb, admin_approval_kb, admin_currency_choice_kb, admin_delcar_confirm_kb,
     promo_reward_type_kb, promo_container_choice_kb, fsub_menu_kb, admin_gift_list_kb, broadcast_target_kb,
-    broadcast_group_pick_kb,
+    broadcast_group_pick_kb, ads_group_pick_kb, ads_menu_kb,
 )
 
 router = Router(name="admin")
@@ -56,6 +57,12 @@ class BroadcastStates(StatesGroup):
     content = State()
     confirm_target = State()
     picking_groups = State()
+
+
+class AdsStates(StatesGroup):
+    picking_groups = State()
+    waiting_content = State()
+    waiting_interval = State()
 
 
 class LookupPlayerStates(StatesGroup):
@@ -1624,4 +1631,144 @@ async def broadcast_group_send(callback: CallbackQuery, state: FSMContext, bot: 
     all_groups = await get_active_bot_groups()
     groups = [(chat_id, title) for chat_id, title in all_groups if chat_id in selected]
     await _run_broadcast(callback.message, bot, source_chat_id, source_message_id, groups)
+    await callback.answer()
+
+
+# ---------------------------------------------------------------- Реклама бота по группам (только глав. админ)
+@router.callback_query(F.data == "admin:ads:menu")
+async def ads_menu(callback: CallbackQuery):
+    if not is_head_admin(callback.from_user.id):
+        await callback.answer("🔒 Доступно только главному администратору", show_alert=True)
+        return
+    target_groups = await get_ad_target_groups()
+    campaign = await get_ad_campaign()
+    is_active = bool(campaign and campaign["is_active"])
+
+    lines = ["📣 <b>Реклама бота</b>\n━━━━━━━━━━━━━━"]
+    if target_groups:
+        lines.append(f"Группы для рекламы ({len(target_groups)}):")
+        lines.extend(f"• {title}" for _, title in target_groups)
+    else:
+        lines.append("Группы для рекламы ещё не выбраны — нажмите «✏️ Редактировать группы».")
+    if is_active and campaign:
+        lines.append(f"\n▶️ Реклама запущена. Интервал: каждые {campaign['interval_minutes']} мин.")
+    else:
+        lines.append("\n⏸ Реклама сейчас не запущена.")
+
+    await callback.message.answer(
+        "\n".join(lines), parse_mode="HTML",
+        reply_markup=ads_menu_kb(is_active, len(target_groups)),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin:ads:editgroups")
+async def ads_edit_groups(callback: CallbackQuery, state: FSMContext):
+    if not is_head_admin(callback.from_user.id):
+        await callback.answer("🔒 Доступно только главному администратору", show_alert=True)
+        return
+    # Список групп бота запрашивается заново при каждом открытии — всегда актуальный.
+    all_groups = await get_active_bot_groups()
+    current = await get_ad_target_groups()
+    selected = {chat_id for chat_id, _ in current}
+    await state.update_data(selected_groups=list(selected))
+    await state.set_state(AdsStates.picking_groups)
+    await callback.message.answer(
+        "☑️ Выберите группы, в которые бот будет постить рекламу:",
+        reply_markup=ads_group_pick_kb(all_groups, selected),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("admin:ads:grouptoggle:"), StateFilter(AdsStates.picking_groups))
+async def ads_group_toggle(callback: CallbackQuery, state: FSMContext):
+    chat_id = int(callback.data.split(":")[3])
+    data = await state.get_data()
+    selected = set(data.get("selected_groups", []))
+    if chat_id in selected:
+        selected.discard(chat_id)
+    else:
+        selected.add(chat_id)
+    await state.update_data(selected_groups=list(selected))
+
+    all_groups = await get_active_bot_groups()
+    try:
+        await callback.message.edit_reply_markup(reply_markup=ads_group_pick_kb(all_groups, selected))
+    except Exception:
+        pass
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin:ads:groupsave", StateFilter(AdsStates.picking_groups))
+async def ads_group_save(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    selected = data.get("selected_groups", [])
+    await state.clear()
+    await set_ad_target_groups(selected)
+
+    campaign = await get_ad_campaign()
+    is_active = bool(campaign and campaign["is_active"])
+    await callback.message.answer(
+        f"✅ Сохранено: {len(selected)} групп(ы) для рекламы.",
+        reply_markup=ads_menu_kb(is_active, len(selected)),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin:ads:start")
+async def ads_start_prompt(callback: CallbackQuery, state: FSMContext):
+    if not is_head_admin(callback.from_user.id):
+        await callback.answer("🔒 Доступно только главному администратору", show_alert=True)
+        return
+    target_groups = await get_ad_target_groups()
+    if not target_groups:
+        await callback.answer("Сначала выберите хотя бы одну группу", show_alert=True)
+        return
+    await callback.message.answer(
+        "📣 Отправьте рекламный пост — подойдёт что угодно: текст, фото, видео, GIF. "
+        "Форматирование (жирный, курсив, ссылки) сохранится как есть."
+    )
+    await state.set_state(AdsStates.waiting_content)
+    await callback.answer()
+
+
+@router.message(StateFilter(AdsStates.waiting_content))
+async def ads_content_received(message: Message, state: FSMContext):
+    if not is_head_admin(message.from_user.id):
+        await state.clear()
+        return
+    await state.update_data(source_chat_id=message.chat.id, source_message_id=message.message_id)
+    await state.set_state(AdsStates.waiting_interval)
+    await message.answer("⏱ Через сколько минут повторять рекламу? Введите число (например, 60 — раз в час):")
+
+
+@router.message(StateFilter(AdsStates.waiting_interval))
+async def ads_interval_received(message: Message, state: FSMContext):
+    if not is_head_admin(message.from_user.id):
+        await state.clear()
+        return
+    if not message.text.strip().isdigit() or int(message.text.strip()) <= 0:
+        await message.answer("⚠️ Введите целое число минут больше нуля.")
+        return
+    interval = int(message.text.strip())
+    data = await state.get_data()
+    await state.clear()
+
+    await set_ad_campaign(data["source_chat_id"], data["source_message_id"], interval)
+    target_groups = await get_ad_target_groups()
+    await message.answer(
+        f"✅ Реклама запущена! Пост будет отправляться в {len(target_groups)} групп(ы) "
+        f"каждые {interval} мин. — бот делает это автоматически, ничего больше делать не нужно.",
+        reply_markup=ads_menu_kb(True, len(target_groups)),
+    )
+
+
+@router.callback_query(F.data == "admin:ads:stop")
+async def ads_stop(callback: CallbackQuery):
+    if not is_head_admin(callback.from_user.id):
+        await callback.answer("🔒 Доступно только главному администратору", show_alert=True)
+        return
+    await stop_ad_campaign()
+    target_groups = await get_ad_target_groups()
+    await callback.message.answer("⏹ Реклама остановлена.", reply_markup=ads_menu_kb(False, len(target_groups)))
     await callback.answer()

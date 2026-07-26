@@ -96,6 +96,40 @@ async def _income_notifier_loop(bot: Bot) -> None:
         await asyncio.sleep(180)
 
 
+async def _ad_campaign_loop(bot: Bot) -> None:
+    """Раз в минуту проверяет, не пора ли снова разослать рекламный пост по группам,
+    выбранным главным админом — интервал полностью автоматический, без ручных действий."""
+    from db import get_ad_campaign, get_ad_target_groups, touch_ad_campaign_sent
+    while True:
+        try:
+            campaign = await get_ad_campaign()
+            if campaign and campaign["is_active"] and campaign["source_message_id"]:
+                now = datetime.datetime.utcnow()
+                last_sent = None
+                if campaign["last_sent_at"]:
+                    try:
+                        last_sent = datetime.datetime.fromisoformat(campaign["last_sent_at"])
+                    except ValueError:
+                        last_sent = None
+                interval = datetime.timedelta(minutes=campaign["interval_minutes"] or 60)
+                if not last_sent or now >= last_sent + interval:
+                    groups = await get_ad_target_groups()
+                    for chat_id, title in groups:
+                        try:
+                            await bot.copy_message(
+                                chat_id=chat_id,
+                                from_chat_id=campaign["source_chat_id"],
+                                message_id=campaign["source_message_id"],
+                            )
+                        except Exception:
+                            pass
+                        await asyncio.sleep(0.1)
+                    await touch_ad_campaign_sent()
+        except Exception:
+            logging.exception("ad campaign loop failed")
+        await asyncio.sleep(60)
+
+
 async def main() -> None:
     _check_config()
 
@@ -227,6 +261,7 @@ async def main() -> None:
     logger.info("Запуск polling...")
     await bot.delete_webhook(drop_pending_updates=True)
     asyncio.create_task(_income_notifier_loop(bot))
+    asyncio.create_task(_ad_campaign_loop(bot))
     await dp.start_polling(bot)
 
 

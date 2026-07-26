@@ -6,9 +6,9 @@ import math
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, FSInputFile, LabeledPrice
 
-from db import get_db, add_user_exp, has_garage_space
+from db import get_db, add_user_exp, has_garage_space, is_user_premium
 from keyboards import battle_pass_kb, bp_levels_kb, bp_quests_kb, bp_premium_kb
-from config import PREMIUM_BP_OPTIONS, STARS_CURRENCY
+from config import PREMIUM_BP_OPTIONS, STARS_CURRENCY, PREMIUM_BP_XP_BOOST, PREMIUM_BP_LEVEL_DISCOUNT
 
 router = Router(name="battlepass")
 
@@ -127,11 +127,12 @@ async def _premium_status_line(bp) -> str:
     return f"💎 Premium BP: <b>активен</b> ✅ до {dt.strftime('%d.%m.%Y')}"
 
 
-@router.message(F.text == "🎫 Боевой пропуск")
-async def show_battle_pass(message: Message):
+async def _render_bp_summary(tg_id: int) -> tuple[str, str | None]:
     conn = await get_db()
-    cur = await conn.execute("SELECT current_level, xp, premium_unlocked, premium_expires_at FROM battle_pass WHERE tg_id = ?",
-                              (message.from_user.id,))
+    cur = await conn.execute(
+        "SELECT current_level, xp, premium_unlocked, premium_expires_at FROM battle_pass WHERE tg_id = ?",
+        (tg_id,),
+    )
     bp = await cur.fetchone()
     cur = await conn.execute("SELECT title, duration_days, image_url, start_date FROM active_season WHERE is_active = 1")
     season = await cur.fetchone()
@@ -143,53 +144,60 @@ async def show_battle_pass(message: Message):
     filled = int(progress_ratio * 10)
     progress_bar = "🟩" * filled + "⬜️" * (10 - filled)
     premium_line = await _premium_status_line(bp)
+    is_premium = await _is_premium_active(bp)
+
+    perks_block = ""
+    if not is_premium:
+        perks_block = (
+            f"\n━━━━━━━━━━━━━━━\n"
+            f"💎 <b>Premium BP открывает:</b>\n"
+            f"⚡ +{int(PREMIUM_BP_XP_BOOST*100)}% к получаемому XP пропуска\n"
+            f"💰 Скидка {int(PREMIUM_BP_LEVEL_DISCOUNT*100)}% на покупку уровней за золото\n"
+            f"🔒 Эксклюзивные премиум-задания с наградами выше обычных\n"
+            f"📦 Ежедневный бесплатный контейнер и другие бонусы"
+        )
 
     caption = (
         f"🎫 <b>{season['title']}</b>\n"
-        f"⏳ Осталось дней сезона: {days_left}\n"
+        f"🔥 До конца сезона: {days_left} дн.\n"
         f"━━━━━━━━━━━━━━━\n"
-        f"🏅 Уровень {bp['current_level']}/{MAX_BP_LEVEL}\n"
+        f"🏅 <b>Уровень {bp['current_level']}/{MAX_BP_LEVEL}</b>\n"
         f"{progress_bar}\n"
-        f"{bp['xp']}/{XP_PER_LEVEL} XP до следующего уровня\n"
+        f"✨ {bp['xp']}/{XP_PER_LEVEL} XP до следующего уровня\n"
         f"━━━━━━━━━━━━━━━\n"
         f"{premium_line}"
+        f"{perks_block}"
     )
+    return caption, season["image_url"]
 
-    if season["image_url"]:
+
+@router.message(F.text == "🎫 Боевой пропуск")
+async def show_battle_pass(message: Message):
+    caption, image_url = await _render_bp_summary(message.from_user.id)
+    kb = battle_pass_kb(1, math.ceil(MAX_BP_LEVEL / LEVELS_PER_PAGE))
+
+    if image_url:
         try:
-            await message.answer_photo(season["image_url"], caption=caption, parse_mode="HTML",
-                                        reply_markup=battle_pass_kb(1, math.ceil(MAX_BP_LEVEL / LEVELS_PER_PAGE)))
+            await message.answer_photo(image_url, caption=caption, parse_mode="HTML", reply_markup=kb)
             return
         except Exception:
             pass
-    await message.answer(caption, parse_mode="HTML",
-                          reply_markup=battle_pass_kb(1, math.ceil(MAX_BP_LEVEL / LEVELS_PER_PAGE)))
+    await message.answer(caption, parse_mode="HTML", reply_markup=kb)
 
 
 @router.callback_query(F.data == "bp:back")
 async def bp_back(callback: CallbackQuery):
-    conn = await get_db()
-    cur = await conn.execute("SELECT current_level, xp, premium_unlocked, premium_expires_at FROM battle_pass WHERE tg_id = ?",
-                              (callback.from_user.id,))
-    bp = await cur.fetchone()
-    cur = await conn.execute("SELECT title, duration_days, start_date FROM active_season WHERE is_active = 1")
-    season = await cur.fetchone()
+    caption, image_url = await _render_bp_summary(callback.from_user.id)
+    kb = battle_pass_kb(1, math.ceil(MAX_BP_LEVEL / LEVELS_PER_PAGE))
 
-    started = datetime.datetime.fromisoformat(season["start_date"])
-    days_left = max(0, season["duration_days"] - (datetime.datetime.utcnow() - started).days)
-    progress_ratio = min(bp["xp"] / XP_PER_LEVEL, 1.0)
-    filled = int(progress_ratio * 10)
-    progress_bar = "🟩" * filled + "⬜️" * (10 - filled)
-    premium_line = await _premium_status_line(bp)
-
-    caption = (
-        f"🎫 <b>{season['title']}</b>\n"
-        f"⏳ Осталось дней сезона: {days_left}\n━━━━━━━━━━━━━━━\n"
-        f"🏅 Уровень {bp['current_level']}/{MAX_BP_LEVEL}\n{progress_bar}\n"
-        f"{bp['xp']}/{XP_PER_LEVEL} XP до следующего уровня\n━━━━━━━━━━━━━━━\n{premium_line}"
-    )
-    await callback.message.answer(caption, parse_mode="HTML",
-                                   reply_markup=battle_pass_kb(1, math.ceil(MAX_BP_LEVEL / LEVELS_PER_PAGE)))
+    if image_url:
+        try:
+            await callback.message.answer_photo(image_url, caption=caption, parse_mode="HTML", reply_markup=kb)
+            await callback.answer()
+            return
+        except Exception:
+            pass
+    await callback.message.answer(caption, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
 
 
@@ -334,6 +342,8 @@ async def claim_bp_quest(callback: CallbackQuery):
 
 
 async def _add_bp_xp(tg_id: int, xp_amount: int):
+    if await is_user_premium(tg_id):
+        xp_amount = int(xp_amount * (1 + PREMIUM_BP_XP_BOOST))
     conn = await get_db()
     cur = await conn.execute("SELECT current_level, xp FROM battle_pass WHERE tg_id = ?", (tg_id,))
     bp = await cur.fetchone()
@@ -394,7 +404,17 @@ async def buy_premium_bp(callback: CallbackQuery, bot: Bot):
 @router.callback_query(F.data == "bp:premium")
 async def bp_premium_menu(callback: CallbackQuery):
     await callback.message.answer(
-        "💎 <b>Premium Battle Pass</b>\nОткройте премиум-награды или купите уровни напрямую.",
+        "💎 <b>Premium Battle Pass</b>\n━━━━━━━━━━━━━━━\n"
+        "Что даёт Premium:\n"
+        f"⚡ +{int(PREMIUM_BP_XP_BOOST*100)}% к XP боевого пропуска — качаетесь быстрее\n"
+        f"💰 Скидка {int(PREMIUM_BP_LEVEL_DISCOUNT*100)}% на покупку уровней за золото\n"
+        "🔒 Эксклюзивные премиум-задания с наградами выше обычных\n"
+        "📈 +10% к доходу с фермы\n"
+        "🎰 x1.5 к ежедневному бонусу серебра\n"
+        "📥 Скидка на премиум-контейнеры + эксклюзивный бесплатный контейнер каждый день\n"
+        "💎 Бейдж в профиле и топе богачей\n"
+        "━━━━━━━━━━━━━━━\n"
+        "Откройте премиум-награды или купите уровни напрямую:",
         parse_mode="HTML", reply_markup=bp_premium_kb(),
     )
     await callback.answer()
@@ -410,6 +430,9 @@ async def bp_buy_levels(callback: CallbackQuery):
     row = await cur.fetchone()
 
     cost_per_level_gold = 50
+    is_premium = await is_user_premium(tg_id)
+    if is_premium:
+        cost_per_level_gold = int(cost_per_level_gold * (1 - PREMIUM_BP_LEVEL_DISCOUNT))
     if option == "max":
         levels_to_buy = min(MAX_BP_LEVEL - row["current_level"], row["gold"] // cost_per_level_gold)
     else:
@@ -424,5 +447,8 @@ async def bp_buy_levels(callback: CallbackQuery):
     await conn.execute("UPDATE battle_pass SET current_level = current_level + ? WHERE tg_id = ?",
                         (levels_to_buy, tg_id))
     await conn.commit()
-    await callback.message.answer(f"✅ Куплено {levels_to_buy} уровень(ей) боевого пропуска за {total_cost} золота.")
+    discount_note = " (с учётом скидки Premium BP)" if is_premium else ""
+    await callback.message.answer(
+        f"✅ Куплено {levels_to_buy} уровень(ей) боевого пропуска за {total_cost} золота{discount_note}."
+    )
     await callback.answer()
