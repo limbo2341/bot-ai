@@ -354,7 +354,8 @@ CREATE TABLE IF NOT EXISTS ad_campaign (
     source_message_id BIGINT,
     interval_minutes INTEGER,
     is_active INTEGER NOT NULL DEFAULT 0,
-    last_sent_at TEXT
+    last_sent_at TEXT,
+    sent_count INTEGER NOT NULL DEFAULT 0
 );
 """.format(base_slots=BASE_GARAGE_SLOTS, base_hours=BASE_MAX_FARM_HOURS)
 
@@ -375,6 +376,7 @@ MIGRATIONS = [
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS income_notified_at TEXT",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_gold_tier1_claimed INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_gold_tier2_claimed INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE ad_campaign ADD COLUMN IF NOT EXISTS sent_count INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_daily_bonus_at TEXT",
     "ALTER TABLE cars ADD COLUMN IF NOT EXISTS telegram_file_id TEXT",
     "ALTER TABLE cars ADD COLUMN IF NOT EXISTS photo_is_custom INTEGER NOT NULL DEFAULT 0",
@@ -1031,7 +1033,7 @@ async def set_ad_target_groups(chat_ids: list) -> None:
 async def get_ad_campaign() -> dict | None:
     conn = await get_db()
     cur = await conn.execute(
-        "SELECT source_chat_id, source_message_id, interval_minutes, is_active, last_sent_at "
+        "SELECT source_chat_id, source_message_id, interval_minutes, is_active, last_sent_at, sent_count "
         "FROM ad_campaign WHERE id = 1"
     )
     row = await cur.fetchone()
@@ -1041,12 +1043,13 @@ async def get_ad_campaign() -> dict | None:
 async def set_ad_campaign(source_chat_id: int, source_message_id: int, interval_minutes: int) -> None:
     conn = await get_db()
     await conn.execute(
-        """INSERT INTO ad_campaign (id, source_chat_id, source_message_id, interval_minutes, is_active, last_sent_at)
-           VALUES (1, ?, ?, ?, 1, ?)
+        """INSERT INTO ad_campaign (id, source_chat_id, source_message_id, interval_minutes, is_active,
+               last_sent_at, sent_count)
+           VALUES (1, ?, ?, ?, 1, NULL, 0)
            ON CONFLICT (id) DO UPDATE SET source_chat_id = EXCLUDED.source_chat_id,
                source_message_id = EXCLUDED.source_message_id, interval_minutes = EXCLUDED.interval_minutes,
-               is_active = 1, last_sent_at = EXCLUDED.last_sent_at""",
-        (source_chat_id, source_message_id, interval_minutes, datetime.datetime.utcnow().isoformat()),
+               is_active = 1, last_sent_at = NULL, sent_count = 0""",
+        (source_chat_id, source_message_id, interval_minutes),
     )
     await conn.commit()
 
@@ -1057,7 +1060,10 @@ async def stop_ad_campaign() -> None:
     await conn.commit()
 
 
-async def touch_ad_campaign_sent() -> None:
+async def touch_ad_campaign_sent(sent_this_round: int) -> None:
     conn = await get_db()
-    await conn.execute("UPDATE ad_campaign SET last_sent_at = ? WHERE id = 1", (datetime.datetime.utcnow().isoformat(),))
+    await conn.execute(
+        "UPDATE ad_campaign SET last_sent_at = ?, sent_count = sent_count + ? WHERE id = 1",
+        (datetime.datetime.utcnow().isoformat(), sent_this_round),
+    )
     await conn.commit()

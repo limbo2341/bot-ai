@@ -1652,8 +1652,11 @@ async def ads_menu(callback: CallbackQuery):
         lines.append("Группы для рекламы ещё не выбраны — нажмите «✏️ Редактировать группы».")
     if is_active and campaign:
         lines.append(f"\n▶️ Реклама запущена. Интервал: каждые {campaign['interval_minutes']} мин.")
+        lines.append(f"📊 Всего отправлено сообщений: {campaign['sent_count']}")
     else:
         lines.append("\n⏸ Реклама сейчас не запущена.")
+        if campaign and campaign["sent_count"]:
+            lines.append(f"📊 Отправлено за последнюю кампанию: {campaign['sent_count']}")
 
     await callback.message.answer(
         "\n".join(lines), parse_mode="HTML",

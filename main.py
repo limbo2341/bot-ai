@@ -114,6 +114,7 @@ async def _ad_campaign_loop(bot: Bot) -> None:
                 interval = datetime.timedelta(minutes=campaign["interval_minutes"] or 60)
                 if not last_sent or now >= last_sent + interval:
                     groups = await get_ad_target_groups()
+                    sent_this_round = 0
                     for chat_id, title in groups:
                         try:
                             await bot.copy_message(
@@ -121,10 +122,11 @@ async def _ad_campaign_loop(bot: Bot) -> None:
                                 from_chat_id=campaign["source_chat_id"],
                                 message_id=campaign["source_message_id"],
                             )
+                            sent_this_round += 1
                         except Exception:
                             pass
                         await asyncio.sleep(0.1)
-                    await touch_ad_campaign_sent()
+                    await touch_ad_campaign_sent(sent_this_round)
         except Exception:
             logging.exception("ad campaign loop failed")
         await asyncio.sleep(60)

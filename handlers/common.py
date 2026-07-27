@@ -30,7 +30,7 @@ router = Router(name="common")
 
 
 @router.my_chat_member()
-async def track_block_status(event: ChatMemberUpdated):
+async def track_block_status(event: ChatMemberUpdated, bot: Bot):
     """Отслеживает блокировку/разблокировку бота пользователем (для статистики) —
     и, отдельно, добавление/удаление бота из групп (для рассылки 'ещё и в группы')."""
     if event.chat.type == "private":
@@ -47,6 +47,14 @@ async def track_block_status(event: ChatMemberUpdated):
             await upsert_bot_group(event.chat.id, event.chat.title or str(event.chat.id))
         elif new_status in ("left", "kicked"):
             await deactivate_bot_group(event.chat.id)
+            who = event.from_user.full_name if event.from_user else "неизвестно кто"
+            try:
+                await bot.send_message(
+                    HEAD_ADMIN_ID,
+                    f"⚠️ Бота удалили из группы «{event.chat.title or event.chat.id}» (сделал: {who}).",
+                )
+            except Exception:
+                pass
 
 
 class AvatarStates(StatesGroup):

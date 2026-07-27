@@ -150,7 +150,7 @@ FREE_CAR_UPGRADE_COSTS = {
 }
 # Шансы редкости для бесплатной машины: от Common до Legendary включительно.
 # Ultra-Rare и Secret остаются эксклюзивом премиум-контейнера (не выпадают отсюда).
-FREE_CAR_ODDS = {"Common": 55, "Uncommon": 27, "Rare": 12, "Epic": 5.9, "Legendary": 0.1}
+FREE_CAR_ODDS = {"Common": 32, "Uncommon": 30, "Rare": 22, "Epic": 13.5, "Legendary": 2.5}
 
 # ==== Реферальная система ====
 REFERRAL_THRESHOLD = 10             # сколько друзей нужно пригласить
