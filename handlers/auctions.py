@@ -1,9 +1,21 @@
 """
-handlers/auctions.py — аукцион машин, доступен с 5 уровня профиля.
+handlers/auctions.py — аукцион машин со ставками, доступен с 1 уровня профиля.
+
+Как это работает:
+- Продавец выставляет машину со стартовой ценой и сроком (24/48/72ч), платит
+  комиссию серебром за размещение (чем дольше висит лот — тем дороже).
+- Покупатели делают ставки. Ставка сразу списывается (эскроу): если тебя
+  перебивают — деньги мгновенно возвращаются, и приходит уведомление, кто
+  именно перебил и на сколько.
+- Если в последние 5 минут до конца кто-то поставил ставку — аукцион
+  продлевается на 5 минут (защита от снайпинга в последнюю секунду).
+- По истечении времени машина уходит победителю (деньги — продавцу), либо,
+  если ставок не было, возвращается в гараж продавца. Комиссия за размещение
+  при этом не возвращается — таковы правила аукционного дома.
 """
 import datetime
 import math
-from aiogram import Router, F
+from aiogram import Router, F, Bot
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -11,8 +23,11 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from db import get_db, has_garage_space, add_user_exp
-from keyboards import auction_menu_kb, auction_my_lots_kb
-from config import AUCTION_UNLOCK_LEVEL
+from keyboards import auction_menu_kb, auction_my_lots_kb, auction_duration_kb
+from config import (
+    AUCTION_UNLOCK_LEVEL, AUCTION_DURATION_OPTIONS, AUCTION_MIN_BID_STEP, AUCTION_MIN_BID_STEP_PERCENT,
+    AUCTION_ANTISNIPE_WINDOW_MIN, AUCTION_ANTISNIPE_EXTEND_MIN,
+)
 
 router = Router(name="auctions")
 LOTS_PER_PAGE = 5
@@ -22,7 +37,26 @@ MY_LOTS_PER_PAGE = 10
 class AuctionStates(StatesGroup):
     choose_car = State()
     price_silver = State()
-    price_gold = State()
+    entering_bid = State()
+
+
+def _min_next_bid(current_bid: int) -> int:
+    step = max(AUCTION_MIN_BID_STEP, int(current_bid * AUCTION_MIN_BID_STEP_PERCENT))
+    return current_bid + step
+
+
+def _time_left_str(ends_at: str) -> str:
+    ends = datetime.datetime.fromisoformat(ends_at)
+    delta = ends - datetime.datetime.utcnow()
+    if delta.total_seconds() <= 0:
+        return "⏳ завершается..."
+    hours, rem = divmod(int(delta.total_seconds()), 3600)
+    minutes = rem // 60
+    if hours >= 24:
+        return f"⏱ {hours // 24}д {hours % 24}ч"
+    if hours > 0:
+        return f"⏱ {hours}ч {minutes}м"
+    return f"⏱ {minutes}м"
 
 
 @router.message(F.text == "🔨 Аукцион")
@@ -33,8 +67,12 @@ async def show_auction_menu(message: Message):
     if u["level"] < AUCTION_UNLOCK_LEVEL:
         await message.answer(f"🔒 Аукцион открывается с {AUCTION_UNLOCK_LEVEL} уровня профиля.")
         return
-    await message.answer("🔨 <b>Аукцион</b>\n━━━━━━━━━━━━━━\nВыберите действие:", parse_mode="HTML",
-                          reply_markup=auction_menu_kb())
+    await message.answer(
+        "🔨 <b>Аукцион</b>\n━━━━━━━━━━━━━━\n"
+        "Делайте ставки на машины других игроков или выставляйте свои — "
+        "лот уходит тому, кто предложит больше к моменту окончания времени.",
+        parse_mode="HTML", reply_markup=auction_menu_kb(),
+    )
 
 
 @router.callback_query(F.data.startswith("auc:list:"))
@@ -48,7 +86,8 @@ async def list_auction_lots(callback: CallbackQuery):
     offset = (page - 1) * LOTS_PER_PAGE
 
     cur = await conn.execute(
-        """SELECT a.auction_id, a.price_silver, a.price_gold, c.name, c.brand, c.rarity
+        """SELECT a.auction_id, a.start_price, a.current_bid, a.current_bidder_id, a.bid_count, a.ends_at,
+                  c.name, c.brand, c.rarity
            FROM auctions a JOIN cars c ON c.car_id = a.car_id
            ORDER BY a.created_at DESC LIMIT ? OFFSET ?""",
         (LOTS_PER_PAGE, offset),
@@ -60,14 +99,17 @@ async def list_auction_lots(callback: CallbackQuery):
         return
 
     rows = []
-    lines = [f"📋 <b>Активные лоты</b> (стр. {page}/{total_pages})\n"]
+    lines = [f"📋 <b>Активные лоты</b> (стр. {page}/{total_pages})\n━━━━━━━━━━━━━━"]
     for lot in lots:
+        current = lot["current_bid"] or lot["start_price"]
+        leader = "🔥 есть ставки" if lot["bid_count"] else "нет ставок — от старта"
         lines.append(
-            f"#{lot['auction_id']} {lot['brand']} {lot['name']} ({lot['rarity']}) — "
-            f"{lot['price_silver']:,} серебра / {lot['price_gold']} золота".replace(",", " ")
+            f"\n🚗 <b>{lot['brand']} {lot['name']}</b> ({lot['rarity']}) — #{lot['auction_id']}\n"
+            f"💰 Текущая цена: <b>{current:,}</b> серебра ({leader})\n"
+            f"{_time_left_str(lot['ends_at'])}".replace(",", " ")
         )
-        rows.append([InlineKeyboardButton(text=f"Купить лот #{lot['auction_id']}",
-                                           callback_data=f"auc:buy:{lot['auction_id']}")])
+        rows.append([InlineKeyboardButton(text=f"💸 Ставка на #{lot['auction_id']}",
+                                           callback_data=f"auc:bid:{lot['auction_id']}")])
     nav = []
     if page > 1:
         nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"auc:list:{page-1}"))
@@ -75,6 +117,7 @@ async def list_auction_lots(callback: CallbackQuery):
         nav.append(InlineKeyboardButton(text="➡️", callback_data=f"auc:list:{page+1}"))
     if nav:
         rows.append(nav)
+    rows.append([InlineKeyboardButton(text="⬅️ В меню аукциона", callback_data="auc:back")])
 
     text = "\n".join(lines)
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
@@ -85,48 +128,108 @@ async def list_auction_lots(callback: CallbackQuery):
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("auc:buy:"))
-async def buy_auction_lot(callback: CallbackQuery):
+@router.callback_query(F.data.startswith("auc:bid:"))
+async def auction_bid_prompt(callback: CallbackQuery, state: FSMContext):
     auction_id = int(callback.data.split(":")[2])
-    tg_id = callback.from_user.id
     conn = await get_db()
     cur = await conn.execute("SELECT * FROM auctions WHERE auction_id = ?", (auction_id,))
     lot = await cur.fetchone()
     if not lot:
-        await callback.answer("Лот уже продан или не найден", show_alert=True)
+        await callback.answer("Лот уже завершён или не найден", show_alert=True)
         return
-    if lot["seller_id"] == tg_id:
-        await callback.answer("Нельзя купить собственный лот", show_alert=True)
-        return
-
-    cur = await conn.execute("SELECT silver, gold FROM users WHERE tg_id = ?", (tg_id,))
-    buyer = await cur.fetchone()
-    if buyer["silver"] < lot["price_silver"] or buyer["gold"] < lot["price_gold"]:
-        await callback.answer("Недостаточно средств", show_alert=True)
-        return
-    if not await has_garage_space(tg_id):
-        await callback.answer("🚫 Гараж переполнен! Расширьте его в «⚙️ Улучшения».", show_alert=True)
+    if lot["seller_id"] == callback.from_user.id:
+        await callback.answer("Нельзя делать ставку на собственный лот", show_alert=True)
         return
 
-    await conn.execute("UPDATE users SET silver = silver - ?, gold = gold - ? WHERE tg_id = ?",
-                        (lot["price_silver"], lot["price_gold"], tg_id))
-    await conn.execute("UPDATE users SET silver = silver + ?, gold = gold + ? WHERE tg_id = ?",
-                        (lot["price_silver"], lot["price_gold"], lot["seller_id"]))
-    await conn.execute(
-        "INSERT INTO user_garage (tg_id, car_id, acquired_date) VALUES (?, ?, ?)",
-        (tg_id, lot["car_id"], datetime.datetime.utcnow().isoformat()),
+    current = lot["current_bid"] or lot["start_price"]
+    min_bid = _min_next_bid(current) if lot["bid_count"] else lot["start_price"]
+    await state.update_data(auction_id=auction_id, min_bid=min_bid)
+    await state.set_state(AuctionStates.entering_bid)
+    await callback.message.answer(
+        f"💸 Лот #{auction_id}. Текущая цена: {current:,} серебра.\n"
+        f"Минимальная ставка: <b>{min_bid:,}</b> серебра. Введите вашу ставку:".replace(",", " "),
+        parse_mode="HTML",
     )
-    await conn.execute("DELETE FROM auctions WHERE auction_id = ?", (auction_id,))
+    await callback.answer()
+
+
+@router.message(StateFilter(AuctionStates.entering_bid))
+async def auction_bid_submit(message: Message, state: FSMContext, bot: Bot):
+    if not message.text.strip().isdigit():
+        await message.answer("⚠️ Введите целое число.")
+        return
+    bid_amount = int(message.text.strip())
+    data = await state.get_data()
+    auction_id = data["auction_id"]
+    tg_id = message.from_user.id
+
+    conn = await get_db()
+    cur = await conn.execute("SELECT * FROM auctions WHERE auction_id = ?", (auction_id,))
+    lot = await cur.fetchone()
+    if not lot:
+        await state.clear()
+        await message.answer("⚠️ Лот уже завершён.")
+        return
+
+    current = lot["current_bid"] or lot["start_price"]
+    min_bid = _min_next_bid(current) if lot["bid_count"] else lot["start_price"]
+    if bid_amount < min_bid:
+        await message.answer(f"⚠️ Ставка должна быть не меньше {min_bid:,} серебра.".replace(",", " "))
+        return
+
+    cur = await conn.execute("SELECT silver, username FROM users WHERE tg_id = ?", (tg_id,))
+    bidder = await cur.fetchone()
+    if bidder["silver"] < bid_amount:
+        await message.answer("⚠️ Недостаточно серебра для такой ставки.")
+        return
+
+    await state.clear()
+
+    # Списываем ставку сразу (эскроу), возвращаем предыдущему лидеру его деньги.
+    await conn.execute("UPDATE users SET silver = silver - ? WHERE tg_id = ?", (bid_amount, tg_id))
+    prev_bidder_id = lot["current_bidder_id"]
+    prev_bid = lot["current_bid"]
+    if prev_bidder_id:
+        await conn.execute("UPDATE users SET silver = silver + ? WHERE tg_id = ?", (prev_bid, prev_bidder_id))
+
+    # Анти-снайпинг: если ставка в последние N минут — продлеваем лот.
+    ends_at = datetime.datetime.fromisoformat(lot["ends_at"])
+    now = datetime.datetime.utcnow()
+    extended = False
+    if (ends_at - now).total_seconds() <= AUCTION_ANTISNIPE_WINDOW_MIN * 60:
+        ends_at = now + datetime.timedelta(minutes=AUCTION_ANTISNIPE_EXTEND_MIN)
+        extended = True
+
+    await conn.execute(
+        """UPDATE auctions SET current_bid = ?, current_bidder_id = ?, bid_count = bid_count + 1, ends_at = ?
+           WHERE auction_id = ?""",
+        (bid_amount, tg_id, ends_at.isoformat(), auction_id),
+    )
     await conn.commit()
     await add_user_exp(tg_id, 15)
-    await callback.message.answer("✅ Лот куплен и добавлен в ваш гараж!")
-    await callback.answer()
+
+    extend_note = f"\n⏳ Времени было мало — лот продлён ещё на {AUCTION_ANTISNIPE_EXTEND_MIN} мин.!" if extended else ""
+    await message.answer(f"✅ Ставка {bid_amount:,} серебра принята на лот #{auction_id}!{extend_note}".replace(",", " "))
+
+    if prev_bidder_id:
+        try:
+            outbidder_name = message.from_user.username or message.from_user.full_name
+            await bot.send_message(
+                prev_bidder_id,
+                f"⚡ Вашу ставку {prev_bid:,} серебра на лот #{auction_id} перебил @{outbidder_name}!\n"
+                f"Новая цена: {bid_amount:,} серебра. Ваши деньги возвращены на баланс — "
+                f"можете перебить ставку снова.".replace(",", " "),
+            )
+        except Exception:
+            pass
 
 
 @router.callback_query(F.data == "auc:back")
 async def auction_back(callback: CallbackQuery):
-    await callback.message.answer("🔨 <b>Аукцион</b>\n━━━━━━━━━━━━━━\nВыберите действие:", parse_mode="HTML",
-                                   reply_markup=auction_menu_kb())
+    await callback.message.answer(
+        "🔨 <b>Аукцион</b>\n━━━━━━━━━━━━━━\nВыберите действие:", parse_mode="HTML",
+        reply_markup=auction_menu_kb(),
+    )
     await callback.answer()
 
 
@@ -142,7 +245,7 @@ async def list_my_lots(callback: CallbackQuery):
     offset = (page - 1) * MY_LOTS_PER_PAGE
 
     cur = await conn.execute(
-        """SELECT a.auction_id, a.price_silver, a.price_gold, c.name, c.brand, c.rarity
+        """SELECT a.auction_id, a.start_price, a.current_bid, a.bid_count, a.ends_at, c.name, c.brand, c.rarity
            FROM auctions a JOIN cars c ON c.car_id = a.car_id
            WHERE a.seller_id = ? ORDER BY a.created_at DESC LIMIT ? OFFSET ?""",
         (tg_id, MY_LOTS_PER_PAGE, offset),
@@ -153,11 +256,13 @@ async def list_my_lots(callback: CallbackQuery):
         await callback.answer()
         return
 
-    lines = [f"🗂 <b>Ваши лоты</b> (стр. {page}/{total_pages})\n"]
+    lines = [f"🗂 <b>Ваши лоты</b> (стр. {page}/{total_pages})\n━━━━━━━━━━━━━━"]
     for lot in lots:
+        current = lot["current_bid"] or lot["start_price"]
+        status = f"🔥 {lot['bid_count']} ставок" if lot["bid_count"] else "нет ставок"
         lines.append(
-            f"#{lot['auction_id']} {lot['brand']} {lot['name']} ({lot['rarity']}) — "
-            f"{lot['price_silver']:,} серебра / {lot['price_gold']} золота".replace(",", " ")
+            f"\n#{lot['auction_id']} {lot['brand']} {lot['name']} ({lot['rarity']})\n"
+            f"💰 {current:,} серебра — {status} — {_time_left_str(lot['ends_at'])}".replace(",", " ")
         )
     kb_lots = [(lot["auction_id"], lot["brand"], lot["name"]) for lot in lots]
     text = "\n".join(lines)
@@ -170,7 +275,7 @@ async def list_my_lots(callback: CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("auc:cancel:"))
-async def cancel_my_lot(callback: CallbackQuery):
+async def cancel_my_lot(callback: CallbackQuery, bot: Bot):
     auction_id = int(callback.data.split(":")[2])
     tg_id = callback.from_user.id
     conn = await get_db()
@@ -180,13 +285,27 @@ async def cancel_my_lot(callback: CallbackQuery):
         await callback.answer("Лот не найден или это не ваш лот", show_alert=True)
         return
 
+    # Если уже есть ставка — возвращаем деньги лидеру и уведомляем его.
+    if lot["current_bidder_id"]:
+        await conn.execute("UPDATE users SET silver = silver + ? WHERE tg_id = ?",
+                            (lot["current_bid"], lot["current_bidder_id"]))
+        try:
+            await bot.send_message(
+                lot["current_bidder_id"],
+                f"ℹ️ Продавец снял лот #{auction_id} с аукциона. Ваша ставка "
+                f"{lot['current_bid']:,} серебра возвращена на баланс.".replace(",", " "),
+            )
+        except Exception:
+            pass
+
     await conn.execute(
         "INSERT INTO user_garage (tg_id, car_id, acquired_date) VALUES (?, ?, ?)",
         (tg_id, lot["car_id"], datetime.datetime.utcnow().isoformat()),
     )
     await conn.execute("DELETE FROM auctions WHERE auction_id = ?", (auction_id,))
     await conn.commit()
-    await callback.message.answer("✅ Лот снят с аукциона, машина возвращена в ваш гараж.")
+    await callback.message.answer("✅ Лот снят с аукциона, машина возвращена в ваш гараж. "
+                                   "Комиссия за размещение не возвращается.")
     await callback.answer()
 
 
@@ -216,46 +335,67 @@ async def auction_create_start(callback: CallbackQuery, state: FSMContext):
 async def auction_pick_car(callback: CallbackQuery, state: FSMContext):
     entry_id = int(callback.data.split(":")[2])
     await state.update_data(entry_id=entry_id)
-    await callback.message.answer("💰 Введите стартовую цену в серебре (0, если не нужно):")
+    await callback.message.answer("💰 Введите стартовую цену лота в серебре:")
     await state.set_state(AuctionStates.price_silver)
     await callback.answer()
 
 
 @router.message(StateFilter(AuctionStates.price_silver))
 async def auction_price_silver(message: Message, state: FSMContext):
-    if not message.text.strip().isdigit():
-        await message.answer("⚠️ Введите целое число.")
+    if not message.text.strip().isdigit() or int(message.text.strip()) <= 0:
+        await message.answer("⚠️ Введите целое число больше нуля.")
         return
     await state.update_data(price_silver=int(message.text.strip()))
-    await message.answer("🥇 Введите цену в золоте (0, если не нужно):")
-    await state.set_state(AuctionStates.price_gold)
+    await message.answer(
+        "⏱ На сколько выставить лот? Комиссия списывается сразу и не возвращается "
+        "(это плата за размещение, а не залог):",
+        reply_markup=auction_duration_kb(),
+    )
 
 
-@router.message(StateFilter(AuctionStates.price_gold))
-async def auction_price_gold(message: Message, state: FSMContext):
-    if not message.text.strip().isdigit():
-        await message.answer("⚠️ Введите целое число.")
-        return
+@router.callback_query(F.data.startswith("auc:duration:"))
+async def auction_finalize(callback: CallbackQuery, state: FSMContext):
+    parts = callback.data.split(":")
+    hours, fee = int(parts[2]), int(parts[3])
     data = await state.get_data()
-    price_gold = int(message.text.strip())
-    tg_id = message.from_user.id
+    if "price_silver" not in data or "entry_id" not in data:
+        await callback.answer("Сессия истекла, начните заново", show_alert=True)
+        await state.clear()
+        return
+
+    tg_id = callback.from_user.id
     entry_id = data["entry_id"]
+    start_price = data["price_silver"]
 
     conn = await get_db()
     cur = await conn.execute("SELECT car_id FROM user_garage WHERE id = ? AND tg_id = ?", (entry_id, tg_id))
     entry = await cur.fetchone()
     if not entry:
-        await message.answer("⚠️ Машина не найдена в гараже.")
+        await callback.message.answer("⚠️ Машина не найдена в гараже.")
         await state.clear()
+        await callback.answer()
         return
 
+    cur = await conn.execute("SELECT silver FROM users WHERE tg_id = ?", (tg_id,))
+    u = await cur.fetchone()
+    if u["silver"] < fee:
+        await callback.answer("Недостаточно серебра на комиссию за размещение", show_alert=True)
+        return
+
+    await state.clear()
+    ends_at = datetime.datetime.utcnow() + datetime.timedelta(hours=hours)
+
+    await conn.execute("UPDATE users SET silver = silver - ? WHERE tg_id = ?", (fee, tg_id))
     await conn.execute("DELETE FROM user_garage WHERE id = ?", (entry_id,))
     await conn.execute(
-        """INSERT INTO auctions (seller_id, car_id, price_silver, price_gold, created_at)
-           VALUES (?, ?, ?, ?, ?)""",
-        (tg_id, entry["car_id"], data["price_silver"], price_gold, datetime.datetime.utcnow().isoformat()),
+        """INSERT INTO auctions (seller_id, car_id, start_price, current_bid, ends_at, created_at)
+           VALUES (?, ?, ?, 0, ?, ?)""",
+        (tg_id, entry["car_id"], start_price, ends_at.isoformat(), datetime.datetime.utcnow().isoformat()),
     )
     await conn.commit()
-    await state.clear()
     await add_user_exp(tg_id, 15)
-    await message.answer("✅ Лот выставлен на аукцион!")
+    await callback.message.answer(
+        f"✅ Лот выставлен на аукцион на {hours} ч.! Комиссия {fee:,} серебра списана.\n"
+        f"Стартовая цена: {start_price:,} серебра.".replace(",", " ")
+    )
+    await callback.answer()

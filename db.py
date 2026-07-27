@@ -235,6 +235,11 @@ CREATE TABLE IF NOT EXISTS auctions (
     car_id INTEGER NOT NULL,
     price_silver BIGINT NOT NULL DEFAULT 0,
     price_gold BIGINT NOT NULL DEFAULT 0,
+    start_price BIGINT NOT NULL DEFAULT 0,
+    current_bid BIGINT NOT NULL DEFAULT 0,
+    current_bidder_id BIGINT,
+    bid_count INTEGER NOT NULL DEFAULT 0,
+    ends_at TEXT,
     created_at TEXT NOT NULL
 );
 
@@ -377,6 +382,11 @@ MIGRATIONS = [
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_gold_tier1_claimed INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_gold_tier2_claimed INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE ad_campaign ADD COLUMN IF NOT EXISTS sent_count INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE auctions ADD COLUMN IF NOT EXISTS start_price BIGINT NOT NULL DEFAULT 0",
+    "ALTER TABLE auctions ADD COLUMN IF NOT EXISTS current_bid BIGINT NOT NULL DEFAULT 0",
+    "ALTER TABLE auctions ADD COLUMN IF NOT EXISTS current_bidder_id BIGINT",
+    "ALTER TABLE auctions ADD COLUMN IF NOT EXISTS bid_count INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE auctions ADD COLUMN IF NOT EXISTS ends_at TEXT",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_daily_bonus_at TEXT",
     "ALTER TABLE cars ADD COLUMN IF NOT EXISTS telegram_file_id TEXT",
     "ALTER TABLE cars ADD COLUMN IF NOT EXISTS photo_is_custom INTEGER NOT NULL DEFAULT 0",
@@ -569,6 +579,20 @@ async def init_db() -> None:
     for migration_sql in MIGRATIONS:
         await conn.execute(migration_sql)
     await conn.commit()
+
+    # Одноразовая очистка: лоты, оставшиеся от старой системы аукциона (фикс-цена,
+    # без ends_at) возвращаем владельцам в гараж, чтобы машины не потерялись при
+    # переходе на новую систему со ставками.
+    cur_legacy = await conn.execute("SELECT * FROM auctions WHERE ends_at IS NULL")
+    legacy_lots = await cur_legacy.fetchall()
+    for lot in legacy_lots:
+        await conn.execute(
+            "INSERT INTO user_garage (tg_id, car_id, acquired_date) VALUES (?, ?, ?)",
+            (lot["seller_id"], lot["car_id"], datetime.datetime.utcnow().isoformat()),
+        )
+        await conn.execute("DELETE FROM auctions WHERE auction_id = ?", (lot["auction_id"],))
+    if legacy_lots:
+        await conn.commit()
 
     cursor = await conn.execute("SELECT COUNT(*) as cnt FROM cars")
     row = await cursor.fetchone()

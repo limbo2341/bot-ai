@@ -457,6 +457,19 @@ def duel_squad_kb(cars: list, selected_ids: set, owner_id: int) -> InlineKeyboar
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def auction_duration_kb() -> InlineKeyboardMarkup:
+    from config import AUCTION_DURATION_OPTIONS
+    rows = []
+    for hours, fee in AUCTION_DURATION_OPTIONS:
+        label = f"{hours} ч." if hours < 24 else f"{hours // 24} дн."
+        rows.append([InlineKeyboardButton(
+            text=f"⏱ {label} — комиссия {fee:,} серебра".replace(",", " "),
+            callback_data=f"auc:duration:{hours}:{fee}", style=ButtonStyle.SUCCESS,
+        )])
+    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="auc:back", style=ButtonStyle.DANGER)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def auction_menu_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📋 Активные лоты", callback_data="auc:list:1", style=ButtonStyle.PRIMARY)],

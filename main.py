@@ -132,6 +132,89 @@ async def _ad_campaign_loop(bot: Bot) -> None:
         await asyncio.sleep(60)
 
 
+async def _auction_expiry_loop(bot: Bot) -> None:
+    """Раз в минуту закрывает истёкшие лоты аукциона: машина уходит победителю
+    (деньги — продавцу), либо, если ставок не было, возвращается продавцу."""
+    from db import get_db, has_garage_space
+    while True:
+        try:
+            conn = await get_db()
+            now = datetime.datetime.utcnow()
+            cur = await conn.execute(
+                "SELECT * FROM auctions WHERE ends_at IS NOT NULL AND ends_at <= ?", (now.isoformat(),)
+            )
+            expired = await cur.fetchall()
+            for lot in expired:
+                cur2 = await conn.execute("SELECT name, brand FROM cars WHERE car_id = ?", (lot["car_id"],))
+                car = await cur2.fetchone()
+                car_label = f"{car['brand']} {car['name']}" if car else "машина"
+
+                if lot["current_bidder_id"]:
+                    winner_id = lot["current_bidder_id"]
+                    price = lot["current_bid"]
+                    if await has_garage_space(winner_id):
+                        await conn.execute(
+                            "INSERT INTO user_garage (tg_id, car_id, acquired_date) VALUES (?, ?, ?)",
+                            (winner_id, lot["car_id"], now.isoformat()),
+                        )
+                        await conn.execute("UPDATE users SET silver = silver + ? WHERE tg_id = ?",
+                                            (price, lot["seller_id"]))
+                        await conn.commit()
+                        try:
+                            await bot.send_message(winner_id, f"🏆 Вы выиграли аукцион! {car_label} добавлена в ваш гараж.")
+                        except Exception:
+                            pass
+                        try:
+                            await bot.send_message(
+                                lot["seller_id"],
+                                f"💰 Ваш лот #{lot['auction_id']} ({car_label}) продан за {price:,} серебра!".replace(",", " "),
+                            )
+                        except Exception:
+                            pass
+                    else:
+                        # Гараж победителя переполнен — возвращаем деньги, машину продавцу.
+                        await conn.execute("UPDATE users SET silver = silver + ? WHERE tg_id = ?", (price, winner_id))
+                        await conn.execute(
+                            "INSERT INTO user_garage (tg_id, car_id, acquired_date) VALUES (?, ?, ?)",
+                            (lot["seller_id"], lot["car_id"], now.isoformat()),
+                        )
+                        await conn.commit()
+                        try:
+                            await bot.send_message(
+                                winner_id,
+                                f"⚠️ Ваш гараж переполнен — выигрыш лота #{lot['auction_id']} отменён, деньги возвращены.",
+                            )
+                        except Exception:
+                            pass
+                        try:
+                            await bot.send_message(
+                                lot["seller_id"],
+                                f"⚠️ Победитель лота #{lot['auction_id']} не смог принять машину (гараж переполнен) — машина возвращена вам.",
+                            )
+                        except Exception:
+                            pass
+                else:
+                    await conn.execute(
+                        "INSERT INTO user_garage (tg_id, car_id, acquired_date) VALUES (?, ?, ?)",
+                        (lot["seller_id"], lot["car_id"], now.isoformat()),
+                    )
+                    await conn.commit()
+                    try:
+                        await bot.send_message(
+                            lot["seller_id"],
+                            f"ℹ️ Лот #{lot['auction_id']} ({car_label}) не был продан — ставок не было. "
+                            f"Машина возвращена в гараж.",
+                        )
+                    except Exception:
+                        pass
+
+                await conn.execute("DELETE FROM auctions WHERE auction_id = ?", (lot["auction_id"],))
+                await conn.commit()
+        except Exception:
+            logging.exception("auction expiry loop failed")
+        await asyncio.sleep(60)
+
+
 async def main() -> None:
     _check_config()
 
@@ -264,6 +347,7 @@ async def main() -> None:
     await bot.delete_webhook(drop_pending_updates=True)
     asyncio.create_task(_income_notifier_loop(bot))
     asyncio.create_task(_ad_campaign_loop(bot))
+    asyncio.create_task(_auction_expiry_loop(bot))
     await dp.start_polling(bot)
 
 

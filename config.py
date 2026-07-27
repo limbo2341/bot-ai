@@ -96,7 +96,13 @@ RARITY_EMOJI = {
     "Secret": "👑",
 }
 
-AUCTION_UNLOCK_LEVEL = 5
+AUCTION_UNLOCK_LEVEL = 1
+# (часы, комиссия за выставление лота серебром) — чем дольше висит лот, тем дороже
+AUCTION_DURATION_OPTIONS = [(24, 5_000), (48, 10_000), (72, 18_000)]
+AUCTION_MIN_BID_STEP = 100          # минимальный шаг ставки, если % от цены меньше этого
+AUCTION_MIN_BID_STEP_PERCENT = 0.05  # +5% к текущей ставке как минимум
+AUCTION_ANTISNIPE_WINDOW_MIN = 5     # если ставка в последние N минут — лот продлевается
+AUCTION_ANTISNIPE_EXTEND_MIN = 5     # на сколько минут продлевается
 
 # ---- Плюшки Premium Battle Pass ----
 PREMIUM_INCOME_BONUS = 0.10        # +10% к доходу с фермы, пока активен Premium BP
