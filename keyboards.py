@@ -504,8 +504,10 @@ def container_menu_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📦 Обычный контейнер — 5,000 серебра", callback_data="cont:buy:common:1", style=ButtonStyle.SUCCESS)],
         [InlineKeyboardButton(text="📦 Редкий контейнер — 50 золота", callback_data="cont:buy:rare:1", style=ButtonStyle.SUCCESS)],
+        [InlineKeyboardButton(text="📦 Элитный контейнер — 40,000 серебра + 80 золота", callback_data="cont:buy:elite", style=ButtonStyle.SUCCESS)],
         [InlineKeyboardButton(text=f"📦 Премиум контейнер — от {PREMIUM_CONTAINER_BASE_PRICE}⭐",
                                callback_data="cont:premmenu", style=ButtonStyle.SUCCESS)],
+        [InlineKeyboardButton(text="💝 Донат-контейнер — золото или звёзды", callback_data="cont:buy:donate", style=ButtonStyle.SUCCESS)],
         [InlineKeyboardButton(text="📊 Таблица шансов", callback_data="cont:odds", style=ButtonStyle.PRIMARY)],
         [InlineKeyboardButton(text=f"{BACK} в меню", callback_data="nav:economy", style=ButtonStyle.PRIMARY)],
     ])
@@ -558,6 +560,20 @@ def broadcast_group_pick_kb(groups: list, selected: set) -> InlineKeyboardMarkup
         style=ButtonStyle.SUCCESS,
     )])
     rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="admin:cancel_flow", style=ButtonStyle.DANGER)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def admin_manage_kb(admins: list) -> InlineKeyboardMarkup:
+    """admins: список (tg_id, username) — только добавленные динамически (не из ADMIN_IDS)."""
+    rows = []
+    for tg_id, username in admins:
+        label = f"@{username}" if username else str(tg_id)
+        rows.append([InlineKeyboardButton(text=f"❌ Убрать {label}", callback_data=f"admin:mgmt:remove:{tg_id}",
+                                           style=ButtonStyle.DANGER)])
+    rows.append([InlineKeyboardButton(text="➕ Назначить админа", callback_data="admin:mgmt:add",
+                                       style=ButtonStyle.SUCCESS)])
+    rows.append([InlineKeyboardButton(text="⬅️ Назад в админку", callback_data="admin:back",
+                                       style=ButtonStyle.PRIMARY)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -620,6 +636,8 @@ def admin_menu_kb(is_head: bool = False, admins_hidden: bool = False) -> InlineK
                                            style=ButtonStyle.SUCCESS)])
         rows.append([InlineKeyboardButton(text="📣 Реклама бота", callback_data="admin:ads:menu",
                                            style=ButtonStyle.SUCCESS)])
+        rows.append([InlineKeyboardButton(text="👥 Управление админами", callback_data="admin:mgmt:menu",
+                                           style=ButtonStyle.PRIMARY)])
     rows.append([InlineKeyboardButton(text=f"{BACK} в игровое меню", callback_data="nav:main", style=ButtonStyle.PRIMARY)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 

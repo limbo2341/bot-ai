@@ -18,19 +18,25 @@ from db import (
     get_fsub_channels, add_fsub_channel, remove_fsub_channel, get_bot_stats, get_donation_history,
     get_active_bot_groups, set_user_blocked,
     get_ad_target_groups, set_ad_target_groups, get_ad_campaign, set_ad_campaign, stop_ad_campaign,
+    get_dynamic_admins, add_bot_admin, remove_bot_admin,
 )
 from config import ADMIN_IDS, HEAD_ADMIN_ID, RARITY_EMOJI
 from keyboards import (
     admin_menu_kb, admin_catalog_nav_kb, admin_approval_kb, admin_currency_choice_kb, admin_delcar_confirm_kb,
     promo_reward_type_kb, promo_container_choice_kb, fsub_menu_kb, admin_gift_list_kb, broadcast_target_kb,
-    broadcast_group_pick_kb, ads_group_pick_kb, ads_menu_kb,
+    broadcast_group_pick_kb, ads_group_pick_kb, ads_menu_kb, admin_manage_kb,
 )
 
 router = Router(name="admin")
 
+# Админы, добавленные главным админом через кнопку в панели (в БД — переживают
+# рестарт бота; сюда подгружаются один раз при старте, см. main.py). ADMIN_IDS из
+# конфига (Railway Variables) остаются "неснимаемыми" — их отсюда убрать нельзя.
+DYNAMIC_ADMIN_IDS: set[int] = set()
+
 
 def is_admin(tg_id: int) -> bool:
-    return tg_id in ADMIN_IDS
+    return tg_id in ADMIN_IDS or tg_id in DYNAMIC_ADMIN_IDS
 
 
 def is_head_admin(tg_id: int) -> bool:
@@ -80,6 +86,10 @@ class GiveCurrencyStates(StatesGroup):
 
 
 class GiftStates(StatesGroup):
+    waiting_player = State()
+
+
+class AdminMgmtStates(StatesGroup):
     waiting_player = State()
 
 
@@ -245,6 +255,74 @@ async def admin_groups_addlink(callback: CallbackQuery, bot: Bot):
         "Отправьте эту ссылку себе или тем, у кого есть права добавлять ботов в нужные группы.",
         parse_mode="HTML",
     )
+    await callback.answer()
+
+
+# ---------------------------------------------------------------- Управление админами (только глав. админ)
+@router.callback_query(F.data == "admin:mgmt:menu")
+async def admin_mgmt_menu(callback: CallbackQuery):
+    if not is_head_admin(callback.from_user.id):
+        await callback.answer("🔒 Доступно только главному администратору", show_alert=True)
+        return
+    admins = await get_dynamic_admins()
+    lines = ["👥 <b>Управление админами</b>\n━━━━━━━━━━━━━━"]
+    if admins:
+        lines.append("Назначенные через панель:")
+        lines.extend(f"• {('@' + u) if u else tid}" for tid, u in admins)
+    else:
+        lines.append("Пока никто не назначен через панель — только базовые админы из настроек хостинга.")
+    await callback.message.answer("\n".join(lines), parse_mode="HTML", reply_markup=admin_manage_kb(admins))
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin:mgmt:add")
+async def admin_mgmt_add_start(callback: CallbackQuery, state: FSMContext):
+    if not is_head_admin(callback.from_user.id):
+        await callback.answer("🔒 Доступно только главному администратору", show_alert=True)
+        return
+    await callback.message.answer("✏️ Введите @username или ID игрока, которого нужно назначить админом:")
+    await state.set_state(AdminMgmtStates.waiting_player)
+    await callback.answer()
+
+
+@router.message(StateFilter(AdminMgmtStates.waiting_player))
+async def admin_mgmt_add_finish(message: Message, state: FSMContext):
+    if not is_head_admin(message.from_user.id):
+        await state.clear()
+        return
+    await state.clear()
+    target = await resolve_player(message.text.strip())
+    if not target:
+        await message.answer("⚠️ Игрок не найден.")
+        return
+    if target["tg_id"] == HEAD_ADMIN_ID or is_admin(target["tg_id"]):
+        await message.answer("ℹ️ Этот игрок уже администратор.")
+        return
+
+    await add_bot_admin(target["tg_id"], target["username"], message.from_user.id)
+    DYNAMIC_ADMIN_IDS.add(target["tg_id"])
+    label = f"@{target['username']}" if target["username"] else str(target["tg_id"])
+    await message.answer(f"✅ {label} назначен администратором.")
+    try:
+        await message.bot.send_message(target["tg_id"], "🎉 Вас назначили администратором бота Carcollection!")
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data.startswith("admin:mgmt:remove:"))
+async def admin_mgmt_remove(callback: CallbackQuery):
+    if not is_head_admin(callback.from_user.id):
+        await callback.answer("🔒 Доступно только главному администратору", show_alert=True)
+        return
+    tg_id = int(callback.data.split(":")[3])
+    await remove_bot_admin(tg_id)
+    DYNAMIC_ADMIN_IDS.discard(tg_id)
+    admins = await get_dynamic_admins()
+    await callback.message.answer("✅ Права администратора сняты.", reply_markup=admin_manage_kb(admins))
+    try:
+        await callback.bot.send_message(tg_id, "ℹ️ Ваши права администратора бота Carcollection были отозваны.")
+    except Exception:
+        pass
     await callback.answer()
 
 

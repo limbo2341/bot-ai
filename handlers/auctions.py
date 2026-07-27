@@ -33,6 +33,18 @@ router = Router(name="auctions")
 LOTS_PER_PAGE = 5
 MY_LOTS_PER_PAGE = 10
 
+# Живые "зрители" открытых карточек лотов: auction_id -> {(chat_id, message_id), ...}.
+# Пока лот открыт хотя бы у одного человека, при каждой новой ставке его карточка
+# обновляется сама, без нажатия "Обновить". Реестр в памяти процесса — переживать
+# перезапуск бота ему не нужно, это лишь список того, что сейчас на экране у людей.
+_LOT_VIEWERS: dict[int, set[tuple[int, int]]] = {}
+
+
+def discard_lot_viewers(auction_id: int) -> None:
+    """Вызывается из фоновой задачи в main.py, когда лот завершается по таймеру —
+    чтобы не хранить в памяти ссылки на карточки лотов, которых больше не существует."""
+    _LOT_VIEWERS.pop(auction_id, None)
+
 
 class AuctionStates(StatesGroup):
     choose_car = State()
@@ -57,6 +69,90 @@ def _time_left_str(ends_at: str) -> str:
     if hours > 0:
         return f"⏱ {hours}ч {minutes}м"
     return f"⏱ {minutes}м"
+
+
+async def _render_lot_detail(auction_id: int) -> tuple[str, InlineKeyboardMarkup] | None:
+    conn = await get_db()
+    cur = await conn.execute(
+        """SELECT a.*, c.name, c.brand, c.rarity, c.hourly_income
+           FROM auctions a JOIN cars c ON c.car_id = a.car_id WHERE a.auction_id = ?""",
+        (auction_id,),
+    )
+    lot = await cur.fetchone()
+    if not lot:
+        return None
+
+    current = lot["current_bid"] or lot["start_price"]
+    leader_line = f"🔥 Ставок сделано: {lot['bid_count']}" if lot["bid_count"] else "Ставок пока не было"
+    min_bid = _min_next_bid(current) if lot["bid_count"] else lot["start_price"]
+
+    text = (
+        f"🔨 <b>Лот #{auction_id}</b>\n━━━━━━━━━━━━━━\n"
+        f"🚗 <b>{lot['brand']} {lot['name']}</b> ({lot['rarity']})\n"
+        f"💵 Доход: {lot['hourly_income']:,} серебра/час\n━━━━━━━━━━━━━━\n"
+        f"💰 Текущая цена: <b>{current:,}</b> серебра\n"
+        f"{leader_line}\n"
+        f"{_time_left_str(lot['ends_at'])}\n"
+        f"➡️ Минимальная следующая ставка: <b>{min_bid:,}</b>\n"
+        f"━━━━━━━━━━━━━━\n🔴 Обновляется в реальном времени, пока лот открыт"
+    ).replace(",", " ")
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💸 Сделать ставку", callback_data=f"auc:bid:{auction_id}")],
+        [InlineKeyboardButton(text="🔄 Обновить", callback_data=f"auc:refresh:{auction_id}")],
+        [InlineKeyboardButton(text="⬅️ К списку лотов", callback_data="auc:list:1")],
+    ])
+    return text, kb
+
+
+async def _push_live_update(bot: Bot, auction_id: int) -> None:
+    """Обновляет карточку лота у всех, кто держит её открытой на экране, сразу
+    после новой ставки — без перезагрузки с их стороны."""
+    viewers = _LOT_VIEWERS.get(auction_id)
+    if not viewers:
+        return
+    rendered = await _render_lot_detail(auction_id)
+    stale = set()
+    for chat_id, message_id in viewers:
+        if rendered is None:
+            stale.add((chat_id, message_id))
+            continue
+        text, kb = rendered
+        try:
+            await bot.edit_message_text(text, chat_id=chat_id, message_id=message_id,
+                                         parse_mode="HTML", reply_markup=kb)
+        except Exception:
+            stale.add((chat_id, message_id))
+    viewers -= stale
+
+
+@router.callback_query(F.data.startswith("auc:view:"))
+async def view_lot_detail(callback: CallbackQuery):
+    auction_id = int(callback.data.split(":")[2])
+    rendered = await _render_lot_detail(auction_id)
+    if rendered is None:
+        await callback.answer("Лот уже завершён или не найден", show_alert=True)
+        return
+    text, kb = rendered
+    sent = await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+    _LOT_VIEWERS.setdefault(auction_id, set()).add((sent.chat.id, sent.message_id))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("auc:refresh:"))
+async def refresh_lot_detail(callback: CallbackQuery):
+    auction_id = int(callback.data.split(":")[2])
+    rendered = await _render_lot_detail(auction_id)
+    if rendered is None:
+        await callback.answer("Лот уже завершён", show_alert=True)
+        return
+    text, kb = rendered
+    _LOT_VIEWERS.setdefault(auction_id, set()).add((callback.message.chat.id, callback.message.message_id))
+    try:
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    except Exception:
+        pass
+    await callback.answer("Обновлено")
 
 
 @router.message(F.text == "🔨 Аукцион")
@@ -108,8 +204,8 @@ async def list_auction_lots(callback: CallbackQuery):
             f"💰 Текущая цена: <b>{current:,}</b> серебра ({leader})\n"
             f"{_time_left_str(lot['ends_at'])}".replace(",", " ")
         )
-        rows.append([InlineKeyboardButton(text=f"💸 Ставка на #{lot['auction_id']}",
-                                           callback_data=f"auc:bid:{lot['auction_id']}")])
+        rows.append([InlineKeyboardButton(text=f"🔍 Лот #{lot['auction_id']} — {current:,} серебра".replace(",", " "),
+                                           callback_data=f"auc:view:{lot['auction_id']}")])
     nav = []
     if page > 1:
         nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"auc:list:{page-1}"))
@@ -223,6 +319,8 @@ async def auction_bid_submit(message: Message, state: FSMContext, bot: Bot):
         except Exception:
             pass
 
+    await _push_live_update(bot, auction_id)
+
 
 @router.callback_query(F.data == "auc:back")
 async def auction_back(callback: CallbackQuery):
@@ -304,6 +402,7 @@ async def cancel_my_lot(callback: CallbackQuery, bot: Bot):
     )
     await conn.execute("DELETE FROM auctions WHERE auction_id = ?", (auction_id,))
     await conn.commit()
+    discard_lot_viewers(auction_id)
     await callback.message.answer("✅ Лот снят с аукциона, машина возвращена в ваш гараж. "
                                    "Комиссия за размещение не возвращается.")
     await callback.answer()

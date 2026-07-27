@@ -210,6 +210,8 @@ async def _auction_expiry_loop(bot: Bot) -> None:
 
                 await conn.execute("DELETE FROM auctions WHERE auction_id = ?", (lot["auction_id"],))
                 await conn.commit()
+                from handlers.auctions import discard_lot_viewers
+                discard_lot_viewers(lot["auction_id"])
         except Exception:
             logging.exception("auction expiry loop failed")
         await asyncio.sleep(60)
@@ -219,6 +221,10 @@ async def main() -> None:
     _check_config()
 
     await init_db()
+
+    from db import get_dynamic_admins
+    from handlers.admin import DYNAMIC_ADMIN_IDS
+    DYNAMIC_ADMIN_IDS.update(tg_id for tg_id, _ in await get_dynamic_admins())
     logger.info("База данных инициализирована.")
 
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))

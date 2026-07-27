@@ -6,7 +6,7 @@ import datetime
 import random
 import json
 from aiogram import Router, F, Bot
-from aiogram.types import Message, CallbackQuery, LabeledPrice
+from aiogram.types import Message, CallbackQuery, LabeledPrice, InlineKeyboardMarkup, InlineKeyboardButton
 
 import asyncio
 
@@ -26,13 +26,17 @@ router = Router(name="containers")
 CONTAINER_ODDS = {
     "common": {"Common": 55, "Uncommon": 30, "Rare": 12, "Epic": 2.9, "Legendary": 0.1},
     "rare": {"Uncommon": 35, "Rare": 40, "Epic": 19.95, "Legendary": 5, "Secret": 0.05},
+    "elite": {"Rare": 20, "Epic": 45, "Legendary": 30, "Ultra-Rare": 4.5, "Secret": 0.5},
     "premium": {"Rare": 25, "Epic": 40, "Legendary": 25, "Ultra-Rare": 9, "Secret": 1},
+    "donate": {"Epic": 30, "Legendary": 40, "Ultra-Rare": 25, "Secret": 5},
 }
 
 CONTAINER_COSTS = {
-    "common": {"currency": "silver", "amount": 5000},
+    "common": {"currency": "silver", "amount": 5_000},
     "rare": {"currency": "gold", "amount": 50},
+    "elite": {"currency": "mixed", "silver": 40_000, "gold": 80},
     "premium": {"currency": "stars", "amount": PREMIUM_CONTAINER_BASE_PRICE},
+    "donate": {"currency": "choice", "gold": 300, "stars": 150},
 }
 
 
@@ -78,7 +82,7 @@ async def premium_container_menu(callback: CallbackQuery):
 @router.callback_query(F.data == "cont:odds")
 async def show_odds(callback: CallbackQuery):
     lines = ["📊 <b>Таблица шансов</b>\n"]
-    names = {"common": "Обычный", "rare": "Редкий", "premium": "Премиум"}
+    names = {"common": "Обычный", "rare": "Редкий", "elite": "Элитный", "premium": "Премиум", "donate": "Донат"}
     for key, odds in CONTAINER_ODDS.items():
         lines.append(f"<b>{names[key]} контейнер:</b>")
         for rarity, weight in odds.items():
@@ -89,16 +93,83 @@ async def show_odds(callback: CallbackQuery):
     await callback.answer()
 
 
-CONTAINER_LABELS = {"common": "Обычный контейнер", "rare": "Редкий контейнер", "premium": "Премиум контейнер"}
+CONTAINER_LABELS = {
+    "common": "Обычный контейнер", "rare": "Редкий контейнер", "elite": "Элитный контейнер",
+    "premium": "Премиум контейнер", "donate": "Донат-контейнер",
+}
 
 
 @router.callback_query(F.data.startswith("cont:buy:"))
 async def buy_container(callback: CallbackQuery, bot: Bot):
     parts = callback.data.split(":")
     container_key = parts[2]
-    qty = int(parts[3]) if len(parts) > 3 else 1
     cost = CONTAINER_COSTS[container_key]
     tg_id = callback.from_user.id
+
+    # "choice" — донат-контейнер, платить можно и золотом, и звёздами; если валюта ещё
+    # не выбрана (нет 4-й части в callback), сперва спрашиваем, чем платить.
+    if cost["currency"] == "choice":
+        chosen = parts[3] if len(parts) > 3 else None
+        if chosen is None:
+            await callback.message.answer(
+                f"💝 Чем оплатить {CONTAINER_LABELS[container_key]}?",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text=f"🥇 {cost['gold']} золота",
+                                           callback_data=f"cont:buy:{container_key}:gold")],
+                    [InlineKeyboardButton(text=f"⭐ {cost['stars']} звёзд (донат)",
+                                           callback_data=f"cont:buy:{container_key}:stars")],
+                ]),
+            )
+            await callback.answer()
+            return
+        if chosen == "stars":
+            payload = json.dumps({"container": container_key, "qty": 1, "tg_id": tg_id})
+            await bot.send_invoice(
+                chat_id=tg_id, title=CONTAINER_LABELS[container_key],
+                description="Открывает шанс на редчайшие машины — покупка звёздами поддерживает проект.",
+                payload=payload, provider_token="", currency=STARS_CURRENCY,
+                prices=[LabeledPrice(label=CONTAINER_LABELS[container_key], amount=cost["stars"])],
+            )
+            await callback.answer()
+            return
+        # chosen == "gold"
+        conn = await get_db()
+        cur = await conn.execute("SELECT gold FROM users WHERE tg_id = ?", (tg_id,))
+        balance = (await cur.fetchone())["gold"]
+        if balance < cost["gold"]:
+            await callback.answer("Недостаточно золота", show_alert=True)
+            return
+        await conn.execute("UPDATE users SET gold = gold - ? WHERE tg_id = ?", (cost["gold"], tg_id))
+        await conn.commit()
+        await add_container_to_inventory(tg_id, container_key, qty=1)
+        await callback.message.answer(
+            f"📦 {CONTAINER_LABELS[container_key]} добавлен в «📦 Инвентарь». "
+            f"Откройте его оттуда в любое удобное время!"
+        )
+        await callback.answer()
+        return
+
+    # "mixed" — списывает сразу две валюты (например, элитный контейнер: серебро + золото).
+    if cost["currency"] == "mixed":
+        conn = await get_db()
+        cur = await conn.execute("SELECT silver, gold FROM users WHERE tg_id = ?", (tg_id,))
+        u = await cur.fetchone()
+        if u["silver"] < cost["silver"] or u["gold"] < cost["gold"]:
+            await callback.answer("Недостаточно серебра или золота", show_alert=True)
+            return
+        await conn.execute("UPDATE users SET silver = silver - ?, gold = gold - ? WHERE tg_id = ?",
+                            (cost["silver"], cost["gold"], tg_id))
+        await conn.commit()
+        await increment_quest_progress(tg_id, "spend_silver", cost["silver"])
+        await add_container_to_inventory(tg_id, container_key, qty=1)
+        await callback.message.answer(
+            f"📦 {CONTAINER_LABELS[container_key]} добавлен в «📦 Инвентарь». "
+            f"Откройте его оттуда в любое удобное время!"
+        )
+        await callback.answer()
+        return
+
+    qty = int(parts[3]) if len(parts) > 3 else 1
 
     if cost["currency"] == "stars":
         price = await _premium_price_for_qty(qty, tg_id)

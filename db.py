@@ -353,6 +353,13 @@ CREATE TABLE IF NOT EXISTS ad_target_groups (
     added_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS bot_admins (
+    tg_id BIGINT PRIMARY KEY,
+    username TEXT,
+    added_by BIGINT NOT NULL,
+    added_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS ad_campaign (
     id INTEGER PRIMARY KEY DEFAULT 1,
     source_chat_id BIGINT,
@@ -1090,4 +1097,28 @@ async def touch_ad_campaign_sent(sent_this_round: int) -> None:
         "UPDATE ad_campaign SET last_sent_at = ?, sent_count = sent_count + ? WHERE id = 1",
         (datetime.datetime.utcnow().isoformat(), sent_this_round),
     )
+    await conn.commit()
+
+
+# ---------------------------------------------------------------- Управление админами (только глав. админ)
+async def get_dynamic_admins() -> list:
+    conn = await get_db()
+    cur = await conn.execute("SELECT tg_id, username FROM bot_admins ORDER BY added_at")
+    rows = await cur.fetchall()
+    return [(r["tg_id"], r["username"]) for r in rows]
+
+
+async def add_bot_admin(tg_id: int, username: str | None, added_by: int) -> None:
+    conn = await get_db()
+    await conn.execute(
+        """INSERT INTO bot_admins (tg_id, username, added_by, added_at) VALUES (?, ?, ?, ?)
+           ON CONFLICT (tg_id) DO NOTHING""",
+        (tg_id, username, added_by, datetime.datetime.utcnow().isoformat()),
+    )
+    await conn.commit()
+
+
+async def remove_bot_admin(tg_id: int) -> None:
+    conn = await get_db()
+    await conn.execute("DELETE FROM bot_admins WHERE tg_id = ?", (tg_id,))
     await conn.commit()
