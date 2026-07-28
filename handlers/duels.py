@@ -129,13 +129,16 @@ async def _calculate_power(tg_id: int, entry_ids: set) -> float:
     conn = await get_db()
     placeholders = ",".join("?" * len(entry_ids))
     cur = await conn.execute(
-        f"""SELECT c.hourly_income, c.rarity FROM user_garage g
+        f"""SELECT c.hourly_income, c.rarity, g.upgrade_level FROM user_garage g
             JOIN cars c ON c.car_id = g.car_id
             WHERE g.id IN ({placeholders}) AND g.tg_id = ?""",
         (*entry_ids, tg_id),
     )
     rows = await cur.fetchall()
-    total = sum(r["hourly_income"] * RARITY_MULTIPLIERS.get(r["rarity"], 1.0) for r in rows)
+    total = sum(
+        r["hourly_income"] * (1 + r["upgrade_level"] * 0.10) * RARITY_MULTIPLIERS.get(r["rarity"], 1.0)
+        for r in rows
+    )
     variance = random.uniform(-0.15, 0.15)
     return total * (1 + variance)
 

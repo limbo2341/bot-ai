@@ -18,6 +18,7 @@ from db import init_db, get_db
 
 from handlers import (
     common, garage, casino, payments, admin, battlepass, duels, auctions, containers, freecar, bonuses, groupcmds,
+    fusion,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
@@ -329,6 +330,7 @@ async def main() -> None:
     dp.include_router(containers.router)
     dp.include_router(freecar.router)
     dp.include_router(bonuses.router)
+    dp.include_router(fusion.router)
     dp.include_router(groupcmds.router)  # ВАЖНО: должен быть последним (см. docstring файла)
 
     @dp.errors()

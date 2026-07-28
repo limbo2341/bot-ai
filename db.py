@@ -192,6 +192,7 @@ CREATE TABLE IF NOT EXISTS user_garage (
     tg_id BIGINT NOT NULL REFERENCES users(tg_id) ON DELETE CASCADE,
     car_id INTEGER NOT NULL REFERENCES cars(car_id) ON DELETE CASCADE,
     is_favorite INTEGER NOT NULL DEFAULT 0,
+    upgrade_level INTEGER NOT NULL DEFAULT 0,
     acquired_date TEXT NOT NULL
 );
 
@@ -360,6 +361,15 @@ CREATE TABLE IF NOT EXISTS bot_admins (
     added_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS account_resets (
+    reset_id SERIAL PRIMARY KEY,
+    target_tg_id BIGINT NOT NULL,
+    admin_id BIGINT NOT NULL,
+    categories TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS ad_campaign (
     id INTEGER PRIMARY KEY DEFAULT 1,
     source_chat_id BIGINT,
@@ -394,6 +404,7 @@ MIGRATIONS = [
     "ALTER TABLE auctions ADD COLUMN IF NOT EXISTS current_bidder_id BIGINT",
     "ALTER TABLE auctions ADD COLUMN IF NOT EXISTS bid_count INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE auctions ADD COLUMN IF NOT EXISTS ends_at TEXT",
+    "ALTER TABLE user_garage ADD COLUMN IF NOT EXISTS upgrade_level INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_daily_bonus_at TEXT",
     "ALTER TABLE cars ADD COLUMN IF NOT EXISTS telegram_file_id TEXT",
     "ALTER TABLE cars ADD COLUMN IF NOT EXISTS photo_is_custom INTEGER NOT NULL DEFAULT 0",
@@ -1121,4 +1132,41 @@ async def add_bot_admin(tg_id: int, username: str | None, added_by: int) -> None
 async def remove_bot_admin(tg_id: int) -> None:
     conn = await get_db()
     await conn.execute("DELETE FROM bot_admins WHERE tg_id = ?", (tg_id,))
+    await conn.commit()
+
+
+# ---------------------------------------------------------------- Обнуление аккаунта (только глав. админ)
+async def reset_account_categories(tg_id: int, categories: list) -> None:
+    conn = await get_db()
+    if "currency" in categories:
+        await conn.execute("UPDATE users SET silver = 0, gold = 0, chips = 0 WHERE tg_id = ?", (tg_id,))
+    if "garage" in categories:
+        await conn.execute("DELETE FROM user_garage WHERE tg_id = ?", (tg_id,))
+    if "level" in categories:
+        await conn.execute("UPDATE users SET level = 1, exp = 0 WHERE tg_id = ?", (tg_id,))
+    if "battlepass" in categories:
+        await conn.execute(
+            "UPDATE battle_pass SET current_level = 0, xp = 0, premium_unlocked = 0, premium_expires_at = NULL "
+            "WHERE tg_id = ?",
+            (tg_id,),
+        )
+    if "clan" in categories:
+        await conn.execute("UPDATE users SET clan_id = NULL WHERE tg_id = ?", (tg_id,))
+    if "inventory" in categories:
+        await conn.execute("DELETE FROM inventory WHERE tg_id = ?", (tg_id,))
+    if "stats" in categories:
+        await conn.execute(
+            "UPDATE users SET action_count = 0, daily_streak = 0, duel_win_streak = 0, profile_visits = 0 "
+            "WHERE tg_id = ?",
+            (tg_id,),
+        )
+    await conn.commit()
+
+
+async def log_account_reset(target_tg_id: int, admin_id: int, categories: list, reason: str) -> None:
+    conn = await get_db()
+    await conn.execute(
+        "INSERT INTO account_resets (target_tg_id, admin_id, categories, reason, created_at) VALUES (?, ?, ?, ?, ?)",
+        (target_tg_id, admin_id, ",".join(categories), reason, datetime.datetime.utcnow().isoformat()),
+    )
     await conn.commit()

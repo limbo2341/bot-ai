@@ -49,6 +49,7 @@ def menu_economy_kb() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[
         [KeyboardButton(text="🎁 Бесплатная машина"), KeyboardButton(text="⚙️ Улучшения")],
         [KeyboardButton(text="🛒 Магазин"), KeyboardButton(text="📥 Контейнеры")],
+        [KeyboardButton(text="🧬 Слияние машин")],
         [KeyboardButton(text="⬅️ Главное меню")],
     ])
 
@@ -250,15 +251,23 @@ def garage_sellmode_kb(cars: list, selected_ids: set, page: int, total_pages: in
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def garage_car_detail_kb(entry_id: int, is_favorite: bool, owner_id: int) -> InlineKeyboardMarkup:
+def garage_car_detail_kb(entry_id: int, is_favorite: bool, owner_id: int, upgrade_level: int = 0) -> InlineKeyboardMarkup:
+    from config import CAR_UPGRADE_MAX_LEVEL
     fav_text = "💔 Убрать из избранного" if is_favorite else "❤️ В избранное"
-    return InlineKeyboardMarkup(inline_keyboard=[
+    rows = [
         [InlineKeyboardButton(text=fav_text, callback_data=f"garage:fav:{owner_id}:{entry_id}",
                                style=ButtonStyle.DANGER if is_favorite else ButtonStyle.SUCCESS)],
-        [InlineKeyboardButton(text="💵 Продать", callback_data=f"garage:sell:{owner_id}:{entry_id}",
-                               style=ButtonStyle.DANGER)],
-        [InlineKeyboardButton(text=f"{BACK} в гараж", callback_data=f"garage:page:{owner_id}:1", style=ButtonStyle.PRIMARY)],
-    ])
+    ]
+    if upgrade_level < CAR_UPGRADE_MAX_LEVEL:
+        rows.append([InlineKeyboardButton(text=f"⬆️ Улучшить (ур. {upgrade_level}/{CAR_UPGRADE_MAX_LEVEL})",
+                                           callback_data=f"garage:upgrade:{owner_id}:{entry_id}",
+                                           style=ButtonStyle.SUCCESS)])
+    else:
+        rows.append([InlineKeyboardButton(text="⭐ Максимальный уровень", callback_data="noop")])
+    rows.append([InlineKeyboardButton(text="💵 Продать", callback_data=f"garage:sell:{owner_id}:{entry_id}",
+                                       style=ButtonStyle.DANGER)])
+    rows.append([InlineKeyboardButton(text=f"{BACK} в гараж", callback_data=f"garage:page:{owner_id}:1", style=ButtonStyle.PRIMARY)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def casino_kb() -> InlineKeyboardMarkup:
@@ -563,6 +572,28 @@ def broadcast_group_pick_kb(groups: list, selected: set) -> InlineKeyboardMarkup
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def wipe_category_kb(selected: set) -> InlineKeyboardMarkup:
+    options = [
+        ("currency", "💰 Валюта (серебро/золото/фишки)"),
+        ("garage", "🚗 Гараж (все машины)"),
+        ("level", "📈 Уровень и опыт"),
+        ("battlepass", "🎫 Боевой пропуск"),
+        ("clan", "🏛 Клан (выход)"),
+        ("inventory", "📦 Инвентарь (контейнеры/предметы)"),
+        ("stats", "📊 Статистика активности"),
+    ]
+    rows = []
+    for key, label in options:
+        mark = "✅ " if key in selected else ""
+        rows.append([InlineKeyboardButton(text=f"{mark}{label}", callback_data=f"admin:wipe:toggle:{key}",
+                                           style=ButtonStyle.SUCCESS if key in selected else None)])
+    rows.append([InlineKeyboardButton(text="🧨 Отметить ВСЁ", callback_data="admin:wipe:all", style=ButtonStyle.DANGER)])
+    rows.append([InlineKeyboardButton(text=f"➡️ Далее ({len(selected)})", callback_data="admin:wipe:next",
+                                       style=ButtonStyle.SUCCESS)])
+    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="admin:cancel_flow", style=ButtonStyle.DANGER)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def admin_manage_kb(admins: list) -> InlineKeyboardMarkup:
     """admins: список (tg_id, username) — только добавленные динамически (не из ADMIN_IDS)."""
     rows = []
@@ -638,6 +669,8 @@ def admin_menu_kb(is_head: bool = False, admins_hidden: bool = False) -> InlineK
                                            style=ButtonStyle.SUCCESS)])
         rows.append([InlineKeyboardButton(text="👥 Управление админами", callback_data="admin:mgmt:menu",
                                            style=ButtonStyle.PRIMARY)])
+        rows.append([InlineKeyboardButton(text="🧨 Обнуление аккаунта", callback_data="admin:wipe:start",
+                                           style=ButtonStyle.DANGER)])
     rows.append([InlineKeyboardButton(text=f"{BACK} в игровое меню", callback_data="nav:main", style=ButtonStyle.PRIMARY)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 

@@ -19,12 +19,13 @@ from db import (
     get_active_bot_groups, set_user_blocked,
     get_ad_target_groups, set_ad_target_groups, get_ad_campaign, set_ad_campaign, stop_ad_campaign,
     get_dynamic_admins, add_bot_admin, remove_bot_admin,
+    reset_account_categories, log_account_reset,
 )
 from config import ADMIN_IDS, HEAD_ADMIN_ID, RARITY_EMOJI
 from keyboards import (
     admin_menu_kb, admin_catalog_nav_kb, admin_approval_kb, admin_currency_choice_kb, admin_delcar_confirm_kb,
     promo_reward_type_kb, promo_container_choice_kb, fsub_menu_kb, admin_gift_list_kb, broadcast_target_kb,
-    broadcast_group_pick_kb, ads_group_pick_kb, ads_menu_kb, admin_manage_kb,
+    broadcast_group_pick_kb, ads_group_pick_kb, ads_menu_kb, admin_manage_kb, wipe_category_kb,
 )
 
 router = Router(name="admin")
@@ -91,6 +92,12 @@ class GiftStates(StatesGroup):
 
 class AdminMgmtStates(StatesGroup):
     waiting_player = State()
+
+
+class AccountWipeStates(StatesGroup):
+    waiting_player = State()
+    picking_categories = State()
+    waiting_reason = State()
 
 
 class DeleteCarStates(StatesGroup):
@@ -323,6 +330,121 @@ async def admin_mgmt_remove(callback: CallbackQuery):
         await callback.bot.send_message(tg_id, "ℹ️ Ваши права администратора бота Carcollection были отозваны.")
     except Exception:
         pass
+    await callback.answer()
+
+
+# ---------------------------------------------------------------- Обнуление аккаунта (только глав. админ, скрыто)
+_WIPE_CATEGORY_LABELS = {
+    "currency": "💰 Валюта", "garage": "🚗 Гараж", "level": "📈 Уровень и опыт",
+    "battlepass": "🎫 Боевой пропуск", "clan": "🏛 Клан", "inventory": "📦 Инвентарь",
+    "stats": "📊 Статистика активности",
+}
+
+
+@router.callback_query(F.data == "admin:wipe:start")
+async def wipe_start(callback: CallbackQuery, state: FSMContext):
+    if not is_head_admin(callback.from_user.id):
+        await callback.answer()  # намеренно без объяснений — обычным админам эта кнопка не видна вообще
+        return
+    await callback.message.answer("✏️ Введите @username или ID игрока для обнуления:")
+    await state.set_state(AccountWipeStates.waiting_player)
+    await callback.answer()
+
+
+@router.message(StateFilter(AccountWipeStates.waiting_player))
+async def wipe_player_resolved(message: Message, state: FSMContext):
+    if not is_head_admin(message.from_user.id):
+        await state.clear()
+        return
+    target = await resolve_player(message.text.strip())
+    if not target:
+        await message.answer("⚠️ Игрок не найден.")
+        return
+    await state.update_data(target_tg_id=target["tg_id"], target_label=target["username"] or str(target["tg_id"]),
+                             categories=[])
+    await state.set_state(AccountWipeStates.picking_categories)
+    await message.answer(
+        f"🧨 Обнуление аккаунта @{target['username'] or target['tg_id']}\n"
+        f"Выберите, что именно обнулить:",
+        reply_markup=wipe_category_kb(set()),
+    )
+
+
+@router.callback_query(F.data.startswith("admin:wipe:toggle:"), StateFilter(AccountWipeStates.picking_categories))
+async def wipe_toggle_category(callback: CallbackQuery, state: FSMContext):
+    key = callback.data.split(":")[3]
+    data = await state.get_data()
+    selected = set(data.get("categories", []))
+    if key in selected:
+        selected.discard(key)
+    else:
+        selected.add(key)
+    await state.update_data(categories=list(selected))
+    try:
+        await callback.message.edit_reply_markup(reply_markup=wipe_category_kb(selected))
+    except Exception:
+        pass
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin:wipe:all", StateFilter(AccountWipeStates.picking_categories))
+async def wipe_select_all(callback: CallbackQuery, state: FSMContext):
+    selected = set(_WIPE_CATEGORY_LABELS.keys())
+    await state.update_data(categories=list(selected))
+    try:
+        await callback.message.edit_reply_markup(reply_markup=wipe_category_kb(selected))
+    except Exception:
+        pass
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin:wipe:next", StateFilter(AccountWipeStates.picking_categories))
+async def wipe_ask_reason(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    if not data.get("categories"):
+        await callback.answer("Выберите хотя бы одну категорию", show_alert=True)
+        return
+    await state.set_state(AccountWipeStates.waiting_reason)
+    await callback.message.answer("✏️ Укажите причину обнуления (для внутреннего лога):")
+    await callback.answer()
+
+
+@router.message(StateFilter(AccountWipeStates.waiting_reason))
+async def wipe_confirm_prompt(message: Message, state: FSMContext):
+    if not is_head_admin(message.from_user.id):
+        await state.clear()
+        return
+    reason = message.text.strip()
+    await state.update_data(reason=reason)
+    data = await state.get_data()
+    categories_text = "\n".join(f"• {_WIPE_CATEGORY_LABELS[c]}" for c in data["categories"])
+    await message.answer(
+        f"⚠️ <b>Подтвердите обнуление</b>\n━━━━━━━━━━━━━━\n"
+        f"Игрок: @{data['target_label']}\nБудет обнулено:\n{categories_text}\n\n"
+        f"Причина: {reason}\n\nЭто необратимо. Подтвердить?",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Подтвердить", callback_data="admin:wipe:confirm", style=ButtonStyle.DANGER)],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="admin:cancel_flow", style=ButtonStyle.PRIMARY)],
+        ]),
+    )
+
+
+@router.callback_query(F.data == "admin:wipe:confirm")
+async def wipe_execute(callback: CallbackQuery, state: FSMContext):
+    if not is_head_admin(callback.from_user.id):
+        await callback.answer()
+        return
+    data = await state.get_data()
+    if not data.get("target_tg_id"):
+        await callback.answer("Сессия истекла", show_alert=True)
+        return
+    await state.clear()
+
+    await reset_account_categories(data["target_tg_id"], data["categories"])
+    await log_account_reset(data["target_tg_id"], callback.from_user.id, data["categories"], data["reason"])
+
+    await callback.message.answer(f"✅ Аккаунт @{data['target_label']} обнулён по выбранным категориям.")
     await callback.answer()
 
 

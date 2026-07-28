@@ -97,6 +97,29 @@ RARITY_EMOJI = {
 }
 
 AUCTION_UNLOCK_LEVEL = 1
+
+# ---- 🧬 Слияние машин (крафт): N дубликатов одной редкости -> 1 машина следующей редкости.
+# Secret не крафтится — остаётся эксклюзивом premium/donate контейнеров.
+FUSION_ORDER = ["Common", "Uncommon", "Rare", "Epic", "Legendary", "Ultra-Rare"]
+FUSION_REQUIREMENTS = {
+    "Common": {"count": 3, "fee_silver": 2_000},
+    "Uncommon": {"count": 3, "fee_silver": 6_000},
+    "Rare": {"count": 4, "fee_silver": 15_000},
+    "Epic": {"count": 4, "fee_silver": 40_000},
+    "Legendary": {"count": 5, "fee_silver": 100_000},
+    "Ultra-Rare": {"count": 6, "fee_silver": 250_000},
+}
+FUSION_NEXT_RARITY = {
+    "Common": "Uncommon", "Uncommon": "Rare", "Rare": "Epic",
+    "Epic": "Legendary", "Legendary": "Ultra-Rare", "Ultra-Rare": "Secret",
+}
+
+# ---- ⬆️ Прокачка конкретной машины: +10% к её доходу/час за уровень (влияет и на
+# мощь в дуэлях, т.к. она считается от дохода машин). Стоимость растёт с уровнем и
+# зависит от базового дохода машины — дорогие редкие машины дороже качать.
+CAR_UPGRADE_MAX_LEVEL = 10
+CAR_UPGRADE_INCOME_PER_LEVEL = 0.10
+CAR_UPGRADE_COST_PER_INCOME = 8  # силвер за 1 очко часового дохода машины, умножается на (уровень+1)
 # (часы, комиссия за выставление лота серебром) — чем дольше висит лот, тем дороже
 AUCTION_DURATION_OPTIONS = [(24, 5_000), (48, 10_000), (72, 18_000)]
 AUCTION_MIN_BID_STEP = 100          # минимальный шаг ставки, если % от цены меньше этого

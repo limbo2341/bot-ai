@@ -17,6 +17,7 @@ from config import (
     BASE_COOLDOWN_SECONDS, FARM_UPGRADE_COSTS, FARM_UPGRADE_STEP_SECONDS,
     STORAGE_UPGRADE_COSTS, GARAGE_SLOT_PRICE_SILVER, RARITY_EMOJI,
     CLAN_MAX_LEVEL, CLAN_INCOME_BONUS_PER_LEVEL,
+    CAR_UPGRADE_MAX_LEVEL, CAR_UPGRADE_INCOME_PER_LEVEL, CAR_UPGRADE_COST_PER_INCOME,
 )
 
 router = Router(name="garage")
@@ -47,7 +48,8 @@ async def _render_garage_page(target: Message, tg_id: int, page: int, edit: bool
     offset = (page - 1) * PAGE_SIZE
 
     cur = await conn.execute(
-        """SELECT g.id as entry_id, c.car_id, c.name, c.brand, c.rarity, c.tier, c.hourly_income
+        """SELECT g.id as entry_id, c.car_id, c.name, c.brand, c.rarity, c.tier,
+                  ROUND(c.hourly_income * (1 + g.upgrade_level * 0.10)) as hourly_income, g.upgrade_level
            FROM user_garage g JOIN cars c ON c.car_id = g.car_id
            WHERE g.tg_id = ? ORDER BY g.id DESC LIMIT ? OFFSET ?""",
         (tg_id, PAGE_SIZE, offset),
@@ -61,7 +63,7 @@ async def _render_garage_page(target: Message, tg_id: int, page: int, edit: bool
     cars = [(r["entry_id"], r["car_id"], r["name"], r["brand"], r["rarity"], r["tier"], r["hourly_income"])
             for r in rows]
     cur = await conn.execute(
-        """SELECT COALESCE(SUM(c.hourly_income), 0) as income FROM user_garage g
+        """SELECT COALESCE(SUM(c.hourly_income * (1 + g.upgrade_level * 0.10)), 0) as income FROM user_garage g
            JOIN cars c ON c.car_id = g.car_id WHERE g.tg_id = ?""",
         (tg_id,),
     )
@@ -207,16 +209,10 @@ async def garage_sellconfirm(callback: CallbackQuery):
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("garage:view:"))
-async def garage_view_car(callback: CallbackQuery):
-    _, _, owner_id_str, entry_id_str = callback.data.split(":")
-    owner_id, entry_id = int(owner_id_str), int(entry_id_str)
-    if callback.from_user.id != owner_id:
-        await callback.answer(NOT_YOUR_GARAGE_TEXT, show_alert=True)
-        return
+async def _render_car_detail(callback: CallbackQuery, owner_id: int, entry_id: int) -> None:
     conn = await get_db()
     cur = await conn.execute(
-        """SELECT g.is_favorite, c.car_id, c.name, c.brand, c.rarity, c.tier, c.hourly_income,
+        """SELECT g.is_favorite, g.upgrade_level, c.car_id, c.name, c.brand, c.rarity, c.tier, c.hourly_income,
                   c.base_value, c.image_url, c.telegram_file_id
            FROM user_garage g JOIN cars c ON c.car_id = g.car_id
            WHERE g.id = ? AND g.tg_id = ?""",
@@ -228,20 +224,76 @@ async def garage_view_car(callback: CallbackQuery):
         return
     emoji = RARITY_EMOJI.get(car["rarity"], "⚪")
     fav_note = "❤️ В избранном" if car["is_favorite"] else ""
+    boosted_income = round(car["hourly_income"] * (1 + car["upgrade_level"] * CAR_UPGRADE_INCOME_PER_LEVEL))
+    upgrade_note = f" (+{car['upgrade_level']*10}% от прокачки, ур. {car['upgrade_level']}/{CAR_UPGRADE_MAX_LEVEL})" \
+        if car["upgrade_level"] else ""
     text = (
         f"{emoji} <b>{car['brand']} {car['name']}</b>\n━━━━━━━━━━━━━━\n"
         f"Редкость: <b>{car['rarity']}</b> | Тир: <b>{car['tier']}</b>\n"
-        f"💵 Доход: {car['hourly_income']:,} серебра/ч\n"
+        f"💵 Доход: {boosted_income:,} серебра/ч{upgrade_note}\n"
+        f"⚔️ Влияет и на мощь в дуэлях!\n"
         f"🏷 Цена продажи: {car['base_value']:,} серебра" + (f"\n{fav_note}" if fav_note else "")
     ).replace(",", " ")
-    kb = garage_car_detail_kb(entry_id, bool(car["is_favorite"]), owner_id)
+    kb = garage_car_detail_kb(entry_id, bool(car["is_favorite"]), owner_id, car["upgrade_level"])
     sent_photo = await send_car_photo(
         callback.message, car["car_id"], car["image_url"], car["telegram_file_id"],
         caption=text, parse_mode="HTML", reply_markup=kb,
     )
     if not sent_photo:
         await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("garage:view:"))
+async def garage_view_car(callback: CallbackQuery):
+    _, _, owner_id_str, entry_id_str = callback.data.split(":")
+    owner_id, entry_id = int(owner_id_str), int(entry_id_str)
+    if callback.from_user.id != owner_id:
+        await callback.answer(NOT_YOUR_GARAGE_TEXT, show_alert=True)
+        return
+    await _render_car_detail(callback, owner_id, entry_id)
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("garage:upgrade:"))
+async def garage_upgrade_car(callback: CallbackQuery):
+    _, _, owner_id_str, entry_id_str = callback.data.split(":")
+    owner_id, entry_id = int(owner_id_str), int(entry_id_str)
+    if callback.from_user.id != owner_id:
+        await callback.answer(NOT_YOUR_GARAGE_TEXT, show_alert=True)
+        return
+
+    conn = await get_db()
+    cur = await conn.execute(
+        """SELECT g.upgrade_level, c.hourly_income, c.name, c.brand FROM user_garage g
+           JOIN cars c ON c.car_id = g.car_id WHERE g.id = ? AND g.tg_id = ?""",
+        (entry_id, owner_id),
+    )
+    car = await cur.fetchone()
+    if not car:
+        await callback.answer("🚫 Машина не найдена.", show_alert=True)
+        return
+    if car["upgrade_level"] >= CAR_UPGRADE_MAX_LEVEL:
+        await callback.answer("Уже максимальный уровень", show_alert=True)
+        return
+
+    cost = round(car["hourly_income"] * CAR_UPGRADE_COST_PER_INCOME * (car["upgrade_level"] + 1))
+    cur = await conn.execute("SELECT silver FROM users WHERE tg_id = ?", (owner_id,))
+    u = await cur.fetchone()
+    if u["silver"] < cost:
+        await callback.answer(f"Недостаточно серебра (нужно {cost:,})".replace(",", " "), show_alert=True)
+        return
+
+    await conn.execute("UPDATE users SET silver = silver - ? WHERE tg_id = ?", (cost, owner_id))
+    await conn.execute("UPDATE user_garage SET upgrade_level = upgrade_level + 1 WHERE id = ?", (entry_id,))
+    await conn.commit()
+
+    new_level = car["upgrade_level"] + 1
+    await callback.answer(
+        f"⬆️ {car['brand']} {car['name']} прокачана до уровня {new_level}! "
+        f"+{int(CAR_UPGRADE_INCOME_PER_LEVEL*100)}% к доходу и мощи в дуэлях.",
+        show_alert=True,
+    )
+    await _render_car_detail(callback, owner_id, entry_id)
 
 
 @router.callback_query(F.data.startswith("garage:fav:"))
@@ -305,11 +357,11 @@ async def claim_silver(message: Message):
     u = await cur.fetchone()
 
     cur = await conn.execute(
-        """SELECT COALESCE(SUM(c.hourly_income), 0) as income
+        """SELECT COALESCE(SUM(c.hourly_income * (1 + g.upgrade_level * 0.10)), 0) as income
            FROM user_garage g JOIN cars c ON c.car_id = g.car_id WHERE g.tg_id = ?""",
         (tg_id,),
     )
-    income = int((await cur.fetchone())["income"])
+    income = round((await cur.fetchone())["income"])
 
     if income == 0:
         await message.answer("⚠️ У вас нет машин в гараже, приносящих доход.")
