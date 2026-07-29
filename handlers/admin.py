@@ -11,7 +11,8 @@ from aiogram.exceptions import TelegramForbiddenError
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.enums import ButtonStyle
 
 from db import (
     get_db, resolve_player, get_setting, set_setting,
@@ -443,6 +444,18 @@ async def wipe_execute(callback: CallbackQuery, state: FSMContext):
 
     await reset_account_categories(data["target_tg_id"], data["categories"])
     await log_account_reset(data["target_tg_id"], callback.from_user.id, data["categories"], data["reason"])
+
+    categories_text = "\n".join(f"• {_WIPE_CATEGORY_LABELS[c]}" for c in data["categories"])
+    try:
+        await callback.bot.send_message(
+            data["target_tg_id"],
+            f"⚠️ <b>Администрация обнулила часть данных вашего аккаунта</b>\n━━━━━━━━━━━━━━\n"
+            f"Обнулено:\n{categories_text}\n\n"
+            f"Причина: {data['reason']}",
+            parse_mode="HTML",
+        )
+    except Exception:
+        pass
 
     await callback.message.answer(f"✅ Аккаунт @{data['target_label']} обнулён по выбранным категориям.")
     await callback.answer()

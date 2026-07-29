@@ -402,10 +402,20 @@ async def claim_silver(message: Message):
     exp_gained = max(earned // 200, 1)
     new_level, leveled_up = await add_user_exp(tg_id, exp_gained)
 
+    farmed_hours = int(capped_hours)
+    farmed_minutes = int((capped_hours - farmed_hours) * 60)
+    time_str = f"{farmed_hours}ч {farmed_minutes}м" if farmed_hours else f"{farmed_minutes}м"
+    capped_note = ""
+    if elapsed_seconds / 3600 > u["max_farming_hours"]:
+        capped_note = f" (максимум для вашего гаража — {u['max_farming_hours']}ч, фармилось дольше)"
+
     text = (
         f"💰 <b>Доход собран!</b>\n━━━━━━━━━━━━━━\n"
-        f"+{earned:,} серебра\n"
-        f"Баланс: {u['silver'] + earned:,} серебра"
+        f"⏱ Нафармлено за: <b>{time_str}</b>{capped_note}\n"
+        f"📈 Ставка: {income:,} серебра/ч\n"
+        f"━━━━━━━━━━━━━━\n"
+        f"➕ <b>{earned:,} серебра</b>\n"
+        f"💼 Баланс: {u['silver'] + earned:,} серебра"
     ).replace(",", " ")
     if clan_bonus_pct > 0:
         text += f"\n🏛 Бонус клана: +{clan_bonus_pct*100:.0f}%"
