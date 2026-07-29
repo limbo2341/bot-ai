@@ -15,6 +15,7 @@ from handlers.battlepass import increment_quest_progress
 from keyboards import container_menu_kb, premium_container_qty_kb
 from config import (
     RARITY_EMOJI, STARS_CURRENCY, PREMIUM_CONTAINER_BASE_PRICE, PREMIUM_CONTAINER_QTY_OPTIONS,
+    PREMIUM_CONTAINER_GOLD_PRICE,
     PREMIUM_CONTAINER_DISCOUNT,
 )
 
@@ -105,6 +106,25 @@ async def buy_container(callback: CallbackQuery, bot: Bot):
     container_key = parts[2]
     cost = CONTAINER_COSTS[container_key]
     tg_id = callback.from_user.id
+
+    # Премиум-контейнер можно взять и за фиксированную цену золотом (без пакетных скидок,
+    # те остаются бонусом за реальный донат звёздами).
+    if container_key == "premium" and len(parts) > 3 and parts[3] == "gold":
+        conn = await get_db()
+        cur = await conn.execute("SELECT gold FROM users WHERE tg_id = ?", (tg_id,))
+        balance = (await cur.fetchone())["gold"]
+        if balance < PREMIUM_CONTAINER_GOLD_PRICE:
+            await callback.answer("Недостаточно золота", show_alert=True)
+            return
+        await conn.execute("UPDATE users SET gold = gold - ? WHERE tg_id = ?", (PREMIUM_CONTAINER_GOLD_PRICE, tg_id))
+        await conn.commit()
+        await add_container_to_inventory(tg_id, "premium", qty=1)
+        await callback.message.answer(
+            f"📦 {CONTAINER_LABELS['premium']} добавлен в «📦 Инвентарь». "
+            f"Откройте его оттуда в любое удобное время!"
+        )
+        await callback.answer()
+        return
 
     # "choice" — донат-контейнер, платить можно и золотом, и звёздами; если валюта ещё
     # не выбрана (нет 4-й части в callback), сперва спрашиваем, чем платить.

@@ -56,7 +56,8 @@ def menu_economy_kb() -> ReplyKeyboardMarkup:
 
 def menu_more_kb() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[
-        [KeyboardButton(text="💝 Бонусы"), KeyboardButton(text="🐞 Сообщить о баге")],
+        [KeyboardButton(text="💝 Бонусы"), KeyboardButton(text="🎟 Лотерея")],
+        [KeyboardButton(text="🐞 Сообщить о баге")],
         [KeyboardButton(text="⬅️ Главное меню")],
     ])
 
@@ -97,7 +98,9 @@ def promo_container_choice_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📦 Обычный", callback_data="promo:container:common", style=ButtonStyle.PRIMARY)],
         [InlineKeyboardButton(text="📦 Редкий", callback_data="promo:container:rare", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(text="📦 Элитный", callback_data="promo:container:elite", style=ButtonStyle.PRIMARY)],
         [InlineKeyboardButton(text="📦 Премиум", callback_data="promo:container:premium", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(text="💝 Донат-контейнер", callback_data="promo:container:donate", style=ButtonStyle.PRIMARY)],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="admin:cancel_flow", style=ButtonStyle.DANGER)],
     ])
 
@@ -523,7 +526,8 @@ def container_menu_kb() -> InlineKeyboardMarkup:
 
 
 def premium_container_qty_kb(is_premium: bool = False) -> InlineKeyboardMarkup:
-    from config import PREMIUM_CONTAINER_BASE_PRICE, PREMIUM_CONTAINER_QTY_OPTIONS, PREMIUM_CONTAINER_DISCOUNT
+    from config import PREMIUM_CONTAINER_BASE_PRICE, PREMIUM_CONTAINER_QTY_OPTIONS, PREMIUM_CONTAINER_DISCOUNT, \
+        PREMIUM_CONTAINER_GOLD_PRICE
     rows = []
     extra_discount = PREMIUM_CONTAINER_DISCOUNT if is_premium else 0.0
     for qty, opt in PREMIUM_CONTAINER_QTY_OPTIONS.items():
@@ -533,6 +537,10 @@ def premium_container_qty_kb(is_premium: bool = False) -> InlineKeyboardMarkup:
             text=f"📦 {opt['label']} — {price}⭐{badge}", callback_data=f"cont:buy:premium:{qty}",
             style=ButtonStyle.SUCCESS,
         )])
+    rows.append([InlineKeyboardButton(
+        text=f"🥇 {PREMIUM_CONTAINER_GOLD_PRICE} золота (1 шт, без скидок)", callback_data="cont:buy:premium:gold",
+        style=ButtonStyle.SUCCESS,
+    )])
     rows.append([InlineKeyboardButton(text=f"{BACK} к контейнерам", callback_data="cont:back", style=ButtonStyle.PRIMARY)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 

@@ -11,11 +11,12 @@ fetchone/fetchall, доступ к колонкам по имени через r
 import os
 import asyncio
 import logging
+import random
 import datetime
 import urllib.parse
 import asyncpg
 from aiogram.types import FSInputFile
-from config import DATABASE_URL, BASE_GARAGE_SLOTS, BASE_MAX_FARM_HOURS, ADMIN_IDS
+from config import DATABASE_URL, BASE_GARAGE_SLOTS, BASE_MAX_FARM_HOURS, ADMIN_IDS, LOTTERY_TICKET_PRICE, LOTTERY_PAYOUT_SHARE
 
 logger = logging.getLogger("carcollection.db")
 
@@ -171,7 +172,8 @@ CREATE TABLE IF NOT EXISTS users (
     duel_win_streak INTEGER NOT NULL DEFAULT 0,
     income_notified_at TEXT,
     referral_gold_tier1_claimed INTEGER NOT NULL DEFAULT 0,
-    referral_gold_tier2_claimed INTEGER NOT NULL DEFAULT 0
+    referral_gold_tier2_claimed INTEGER NOT NULL DEFAULT 0,
+    lottery_last_reminder_round TEXT
 );
 
 CREATE TABLE IF NOT EXISTS cars (
@@ -370,6 +372,18 @@ CREATE TABLE IF NOT EXISTS account_resets (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS lottery_tickets (
+    tg_id BIGINT PRIMARY KEY REFERENCES users(tg_id) ON DELETE CASCADE,
+    ticket_count INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS lottery_state (
+    id INTEGER PRIMARY KEY DEFAULT 1,
+    draws_at TEXT NOT NULL,
+    last_winner_tg_id BIGINT,
+    last_winner_prize BIGINT
+);
+
 CREATE TABLE IF NOT EXISTS ad_campaign (
     id INTEGER PRIMARY KEY DEFAULT 1,
     source_chat_id BIGINT,
@@ -398,6 +412,7 @@ MIGRATIONS = [
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS income_notified_at TEXT",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_gold_tier1_claimed INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_gold_tier2_claimed INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS lottery_last_reminder_round TEXT",
     "ALTER TABLE ad_campaign ADD COLUMN IF NOT EXISTS sent_count INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE auctions ADD COLUMN IF NOT EXISTS start_price BIGINT NOT NULL DEFAULT 0",
     "ALTER TABLE auctions ADD COLUMN IF NOT EXISTS current_bid BIGINT NOT NULL DEFAULT 0",
@@ -1170,3 +1185,74 @@ async def log_account_reset(target_tg_id: int, admin_id: int, categories: list, 
         (target_tg_id, admin_id, ",".join(categories), reason, datetime.datetime.utcnow().isoformat()),
     )
     await conn.commit()
+
+
+# ---------------------------------------------------------------- 🎟 Лотерея (ежедневный розыгрыш)
+async def get_lottery_state() -> dict:
+    conn = await get_db()
+    cur = await conn.execute("SELECT draws_at, last_winner_tg_id, last_winner_prize FROM lottery_state WHERE id = 1")
+    row = await cur.fetchone()
+    if not row:
+        draws_at = (datetime.datetime.utcnow() + datetime.timedelta(hours=24)).isoformat()
+        await conn.execute("INSERT INTO lottery_state (id, draws_at) VALUES (1, ?)", (draws_at,))
+        await conn.commit()
+        cur = await conn.execute("SELECT draws_at, last_winner_tg_id, last_winner_prize FROM lottery_state WHERE id = 1")
+        row = await cur.fetchone()
+    return row
+
+
+async def get_lottery_pot_and_tickets(tg_id: int) -> tuple[int, int, int]:
+    """Возвращает (общий банк серебра, всего билетов, билетов этого игрока)."""
+    conn = await get_db()
+    cur = await conn.execute("SELECT COALESCE(SUM(ticket_count), 0) as total FROM lottery_tickets")
+    total_tickets = (await cur.fetchone())["total"]
+    cur = await conn.execute("SELECT ticket_count FROM lottery_tickets WHERE tg_id = ?", (tg_id,))
+    row = await cur.fetchone()
+    my_tickets = row["ticket_count"] if row else 0
+    return total_tickets * LOTTERY_TICKET_PRICE, total_tickets, my_tickets
+
+
+async def buy_lottery_tickets(tg_id: int, count: int) -> bool:
+    conn = await get_db()
+    cost = count * LOTTERY_TICKET_PRICE
+    cur = await conn.execute("SELECT silver FROM users WHERE tg_id = ?", (tg_id,))
+    u = await cur.fetchone()
+    if u["silver"] < cost:
+        return False
+    await conn.execute("UPDATE users SET silver = silver - ? WHERE tg_id = ?", (cost, tg_id))
+    await conn.execute(
+        """INSERT INTO lottery_tickets (tg_id, ticket_count) VALUES (?, ?)
+           ON CONFLICT (tg_id) DO UPDATE SET ticket_count = lottery_tickets.ticket_count + EXCLUDED.ticket_count""",
+        (tg_id, count),
+    )
+    await conn.commit()
+    return True
+
+
+async def draw_lottery() -> tuple[int, int] | None:
+    """Проводит розыгрыш: возвращает (tg_id победителя, приз) либо None, если билетов не было."""
+    conn = await get_db()
+    cur = await conn.execute("SELECT tg_id, ticket_count FROM lottery_tickets WHERE ticket_count > 0")
+    rows = await cur.fetchall()
+    if not rows:
+        next_draw = (datetime.datetime.utcnow() + datetime.timedelta(hours=24)).isoformat()
+        await conn.execute("UPDATE lottery_state SET draws_at = ? WHERE id = 1", (next_draw,))
+        await conn.commit()
+        return None
+
+    weighted = []
+    for r in rows:
+        weighted.extend([r["tg_id"]] * r["ticket_count"])
+    winner_tg_id = random.choice(weighted)
+    total_tickets = sum(r["ticket_count"] for r in rows)
+    prize = int(total_tickets * LOTTERY_TICKET_PRICE * LOTTERY_PAYOUT_SHARE)
+
+    await conn.execute("UPDATE users SET silver = silver + ? WHERE tg_id = ?", (prize, winner_tg_id))
+    await conn.execute("DELETE FROM lottery_tickets")
+    next_draw = (datetime.datetime.utcnow() + datetime.timedelta(hours=24)).isoformat()
+    await conn.execute(
+        "UPDATE lottery_state SET draws_at = ?, last_winner_tg_id = ?, last_winner_prize = ? WHERE id = 1",
+        (next_draw, winner_tg_id, prize),
+    )
+    await conn.commit()
+    return winner_tg_id, prize

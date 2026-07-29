@@ -196,6 +196,7 @@ async def menu_more(message: Message):
     await message.answer(
         "🎀 <b>Бонусы и ещё</b>\n━━━━━━━━━━━━━━\n"
         "💝 Бонусы — ежедневный бонус, рефералы, промокоды\n"
+        "🎟 Лотерея — купите билеты, раз в сутки случайный победитель забирает банк\n"
         "🐞 Сообщить о баге — если что-то пошло не так",
         parse_mode="HTML", reply_markup=menu_more_kb(),
     )
@@ -252,10 +253,14 @@ async def _confirm_referral(bot, tg_id: int) -> None:
     referrer_id = row["referred_by"]
     await conn.execute("UPDATE users SET referral_confirmed = 1 WHERE tg_id = ?", (tg_id,))
     await conn.commit()
+
+    from handlers.containers import add_container_to_inventory, CONTAINER_LABELS
+    await add_container_to_inventory(referrer_id, "donate", qty=1)
     try:
         await bot.send_message(
             referrer_id,
-            "👥 По вашей реферальной ссылке перешёл новый пользователь! +1 приглашённый.",
+            "👥 По вашей реферальной ссылке перешёл новый пользователь! +1 приглашённый.\n"
+            f"🎁 Бонус: {CONTAINER_LABELS['donate']} добавлен в «📦 Инвентарь»!",
         )
     except Exception:
         pass

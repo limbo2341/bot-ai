@@ -18,7 +18,7 @@ from db import init_db, get_db
 
 from handlers import (
     common, garage, casino, payments, admin, battlepass, duels, auctions, containers, freecar, bonuses, groupcmds,
-    fusion,
+    fusion, lottery,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
@@ -218,6 +218,74 @@ async def _auction_expiry_loop(bot: Bot) -> None:
         await asyncio.sleep(60)
 
 
+async def _lottery_draw_loop(bot: Bot) -> None:
+    """Раз в пару минут проверяет, не пора ли провести розыгрыш лотереи (раз в 24ч),
+    и объявляет победителя всем игрокам."""
+    from db import get_lottery_state, draw_lottery, broadcast_message
+    while True:
+        try:
+            state = await get_lottery_state()
+            draws_at = datetime.datetime.fromisoformat(state["draws_at"])
+            if datetime.datetime.utcnow() >= draws_at:
+                result = await draw_lottery()
+                if result:
+                    winner_id, prize = result
+                    text = (
+                        f"🎉 <b>Розыгрыш лотереи завершён!</b>\n"
+                        f"Победитель забрал <b>{prize:,} серебра</b>! Поздравляем!\n"
+                        f"Новый раунд уже начался — жмите «🎟 Лотерея» в разделе бонусов.".replace(",", " ")
+                    )
+                    try:
+                        await bot.send_message(winner_id, f"🏆 Вы выиграли в лотерее {prize:,} серебра! 🎉".replace(",", " "))
+                    except Exception:
+                        pass
+                    await broadcast_message(bot, text)
+        except Exception:
+            logging.exception("lottery draw loop failed")
+        await asyncio.sleep(120)
+
+
+async def _lottery_reminder_loop(bot: Bot) -> None:
+    """Раз в час напоминает игрокам, у которых ещё нет билета в ТЕКУЩЕМ раунде
+    лотереи, поучаствовать — но только один раз за раунд, без спама."""
+    from db import get_db, get_lottery_state
+    from aiogram.exceptions import TelegramForbiddenError
+    from db import set_user_blocked
+    while True:
+        try:
+            state = await get_lottery_state()
+            current_round = state["draws_at"]
+            conn = await get_db()
+            cur = await conn.execute(
+                """SELECT tg_id FROM users
+                   WHERE is_banned = 0 AND blocked_bot = 0
+                     AND (lottery_last_reminder_round IS NULL OR lottery_last_reminder_round != ?)
+                     AND tg_id NOT IN (SELECT tg_id FROM lottery_tickets WHERE ticket_count > 0)""",
+                (current_round,),
+            )
+            rows = await cur.fetchall()
+            for row in rows:
+                try:
+                    await bot.send_message(
+                        row["tg_id"],
+                        "🎟 Участвуй в лотерее! Купи билет — раз в сутки случайный игрок "
+                        "забирает весь банк. Загляни в «🎀 Бонусы и ещё» → «🎟 Лотерея».",
+                    )
+                except TelegramForbiddenError:
+                    await set_user_blocked(row["tg_id"], True)
+                except Exception:
+                    pass
+                await conn.execute(
+                    "UPDATE users SET lottery_last_reminder_round = ? WHERE tg_id = ?",
+                    (current_round, row["tg_id"]),
+                )
+                await conn.commit()
+                await asyncio.sleep(0.05)
+        except Exception:
+            logging.exception("lottery reminder loop failed")
+        await asyncio.sleep(3600)
+
+
 async def main() -> None:
     _check_config()
 
@@ -331,6 +399,7 @@ async def main() -> None:
     dp.include_router(freecar.router)
     dp.include_router(bonuses.router)
     dp.include_router(fusion.router)
+    dp.include_router(lottery.router)
     dp.include_router(groupcmds.router)  # ВАЖНО: должен быть последним (см. docstring файла)
 
     @dp.errors()
@@ -356,6 +425,8 @@ async def main() -> None:
     asyncio.create_task(_income_notifier_loop(bot))
     asyncio.create_task(_ad_campaign_loop(bot))
     asyncio.create_task(_auction_expiry_loop(bot))
+    asyncio.create_task(_lottery_draw_loop(bot))
+    asyncio.create_task(_lottery_reminder_loop(bot))
     await dp.start_polling(bot)
 
 

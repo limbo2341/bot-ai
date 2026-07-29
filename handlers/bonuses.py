@@ -162,7 +162,8 @@ async def show_referral(callback: CallbackQuery):
     bar = "🟩" * filled + "⬜️" * (10 - filled)
     await callback.message.answer(
         f"👥 <b>Реферальная система</b>\n━━━━━━━━━━━━━━\n"
-        f"Пригласите {REFERRAL_THRESHOLD} друзей — получите секретную машину!\n\n"
+        f"🎁 За каждого приглашённого друга — сразу 1 донат-контейнер!\n"
+        f"Плюс золото за 3 и 5 друзей, а за {REFERRAL_THRESHOLD} — секретная машина!\n\n"
         f"🔗 <code>https://t.me/{bot_info.username}?start=ref_{tg_id}</code>\n━━━━━━━━━━━━━━\n"
         f"{bar}\n📊 Приглашено: {count} | Прогресс: {status}",
         parse_mode="HTML",
