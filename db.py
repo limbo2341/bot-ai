@@ -593,7 +593,7 @@ def _build_car_catalog() -> list[tuple]:
         hourly_income = round(base * rarity_income_mult[rarity])
         base_value = hourly_income * 45  # цена продажи ~45 часов дохода
         name = model
-        # Локальная нарисованная карточка по редкости (см. assets/car_placeholders/),
+        # Локальная нарисованная карточка по редкости (см. assets/train_placeholders/),
         # без зависимости от внешнего сервиса — надёжнее и не хотлинкает чужой контент.
         slug = RARITY_IMAGE_SLUG.get(rarity, "common")
         image_url = f"local:{slug}"
@@ -636,8 +636,34 @@ async def init_db() -> None:
             catalog,
         )
         await conn.commit()
+    else:
+        # БД уже была заполнена ДО перехода на поезда (например, старым каталогом машин) —
+        # переименовываем существующие строки по car_id, чтобы не потерять ссылки на них
+        # из user_garage/auctions у игроков. Безопасно запускать при каждом старте.
+        await _reseed_train_names()
 
     await _rebalance_car_income()
+
+
+async def _reseed_train_names() -> None:
+    """Один раз (и безопасно при каждом повторном запуске) переименовывает уже
+    существующие строки cars в актуальный ростер поездов по car_id — сам доход/цена
+    пересчитываются отдельно в _rebalance_car_income()."""
+    conn = await get_db()
+    catalog = _build_car_catalog()
+    cur = await conn.execute("SELECT car_id FROM cars ORDER BY car_id LIMIT 1")
+    first = await cur.fetchone()
+    if not first:
+        return
+    start_id = first["car_id"]
+    for i, (name, brand, rarity, tier, _income, _value, image_url) in enumerate(catalog):
+        car_id = start_id + i
+        await conn.execute(
+            "UPDATE cars SET name = ?, brand = ?, rarity = ?, tier = ?, image_url = ? "
+            "WHERE car_id = ? AND photo_is_custom = 0",
+            (name, brand, rarity, tier, image_url, car_id),
+        )
+    await conn.commit()
 
 
 async def _rebalance_car_income() -> None:
