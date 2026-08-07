@@ -17,7 +17,7 @@ from config import REFERRAL_THRESHOLD, PREMIUM_DAILY_BONUS_MULT, WEEKLY_STREAK_G
 router = Router(name="bonuses")
 
 DAILY_BONUS_COOLDOWN_SECONDS = 24 * 60 * 60
-# Порог суммарной ценности гаража (в серебре) -> диапазон награды и шанс контейнера.
+# Порог суммарной ценности депо (в серебре) -> диапазон награды и шанс контейнера.
 DAILY_BONUS_TIERS = [
     (0, (500, 3_000), None),
     (50_000, (3_000, 15_000), "common"),
@@ -134,7 +134,7 @@ async def daily_bonus_claim(callback: CallbackQuery):
     if is_premium:
         bonus_text += f"\n💎 Premium BP: x{PREMIUM_DAILY_BONUS_MULT} к награде"
 
-    # Чем больше активов в гараже — тем выше шанс дополнительно получить контейнер.
+    # Чем больше активов в депо — тем выше шанс дополнительно получить контейнер.
     if container_key and random.random() < 0.25:
         from handlers.containers import add_container_to_inventory, CONTAINER_LABELS
         await add_container_to_inventory(tg_id, container_key)
@@ -163,7 +163,7 @@ async def show_referral(callback: CallbackQuery):
     await callback.message.answer(
         f"👥 <b>Реферальная система</b>\n━━━━━━━━━━━━━━\n"
         f"🎁 За каждого приглашённого друга — сразу 1 донат-контейнер!\n"
-        f"Плюс золото за 3 и 5 друзей, а за {REFERRAL_THRESHOLD} — секретная машина!\n\n"
+        f"Плюс золото за 3 и 5 друзей, а за {REFERRAL_THRESHOLD} — секретный поезд!\n\n"
         f"🔗 <code>https://t.me/{bot_info.username}?start=ref_{tg_id}</code>\n━━━━━━━━━━━━━━\n"
         f"{bar}\n📊 Приглашено: {count} | Прогресс: {status}",
         parse_mode="HTML",
@@ -219,16 +219,16 @@ async def promo_redeem_check(message: Message, state: FSMContext):
         if r_type == "car":
             car_id = int(r_value)
             if not await has_garage_space(tg_id):
-                raise RuntimeError("🚫 Ваш гараж переполнен! Освободите место и введите промокод снова.")
+                raise RuntimeError("🚫 Ваше депо переполнено! Освободите место и введите промокод снова.")
             cur2 = await conn.execute("SELECT name, brand FROM cars WHERE car_id = ?", (car_id,))
             car = await cur2.fetchone()
             if not car:
-                raise RuntimeError("⚠️ Машина из этого промокода больше не существует в каталоге.")
+                raise RuntimeError("⚠️ Поезд из этого промокода больше не существует в каталоге.")
             await conn.execute(
                 "INSERT INTO user_garage (tg_id, car_id, acquired_date) VALUES (?, ?, ?)",
                 (tg_id, car_id, datetime.datetime.utcnow().isoformat()),
             )
-            return f"машина <b>{car['brand']} {car['name']}</b>"
+            return f"поезд <b>{car['brand']} {car['name']}</b>"
         raise RuntimeError("⚠️ Неизвестный тип награды промокода.")
 
     try:

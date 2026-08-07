@@ -1,5 +1,5 @@
 """
-handlers/duels.py — дуэли между игроками: состав из машин, ставки, расчёт мощи.
+handlers/duels.py — дуэли между игроками: состав из поездов, ставки, расчёт мощи.
 Power = sum(car_income * rarity_multiplier) + random(-15%, +15%)
 """
 import random
@@ -21,9 +21,9 @@ DUEL_RESOLVE_DELAY_SECONDS = 60  # результат приходит не мг
 _squad_selection: dict[int, set] = {}  # tg_id -> set(entry_id) — временный кэш выбора состава
 
 RACE_STAGES = [
-    "🏁 Старт! Машины срываются с места...",
-    "🚗💨 Первый круг позади, соперники идут почти вровень...",
-    "🌪 Кто-то жмёт на газ на последнем повороте...",
+    "🏁 Старт! Поезда срываются с места...",
+    "🚂💨 Первый круг позади, соперники идут почти вровень...",
+    "🌪 Кто-то прибавляет ходу на последнем повороте...",
     "🏆 Финишная прямая!",
 ]
 
@@ -33,7 +33,7 @@ async def show_duel_menu(message: Message):
     await message.answer(
         (
             "⚔️ <b>Дуэли</b>\n━━━━━━━━━━━━━━\n"
-            f"Соберите состав из до {MAX_SQUAD_SIZE} машин и найдите соперника.\n"
+            f"Соберите состав из до {MAX_SQUAD_SIZE} поездов и найдите соперника.\n"
             f"💰 Ставка за бой: {DUEL_STAKE_SILVER:,} серебра\n"
             f"⚡ Мощь = сумма (доход × множитель редкости) ± 15%"
         ).replace(",", " "),
@@ -46,7 +46,7 @@ async def duel_back(callback: CallbackQuery):
     await callback.message.answer(
         (
             "⚔️ <b>Дуэли</b>\n━━━━━━━━━━━━━━\n"
-            f"Соберите состав из до {MAX_SQUAD_SIZE} машин и найдите соперника.\n"
+            f"Соберите состав из до {MAX_SQUAD_SIZE} поездов и найдите соперника.\n"
             f"💰 Ставка за бой: {DUEL_STAKE_SILVER:,} серебра\n"
             f"⚡ Мощь = сумма (доход × множитель редкости) ± 15%"
         ).replace(",", " "),
@@ -66,18 +66,18 @@ async def show_squad_builder(callback: CallbackQuery):
     )
     cars = [(r["entry_id"], r["name"], r["brand"], r["rarity"]) for r in await cur.fetchall()]
     if not cars:
-        await callback.answer("В вашем гараже нет машин", show_alert=True)
+        await callback.answer("В вашем депо нет поездов", show_alert=True)
         return
 
     selected = _squad_selection.setdefault(tg_id, set())
     await callback.message.answer(
-        f"🛡 Выберите до {MAX_SQUAD_SIZE} машин для состава:",
+        f"🛡 Выберите до {MAX_SQUAD_SIZE} поездов для состава:",
         reply_markup=duel_squad_kb(cars, selected, tg_id),
     )
     await callback.answer()
 
 
-NOT_YOUR_SQUAD_TEXT = "🚫 Это не ваш состав — в группе у каждого свой набор машин для дуэли."
+NOT_YOUR_SQUAD_TEXT = "🚫 Это не ваш состав — в группе у каждого свой набор поездов для дуэли."
 
 
 @router.callback_query(F.data.startswith("duel:toggle:"))
@@ -95,7 +95,7 @@ async def toggle_squad_member(callback: CallbackQuery):
     elif len(selected) < MAX_SQUAD_SIZE:
         selected.add(entry_id)
     else:
-        await callback.answer(f"Максимум {MAX_SQUAD_SIZE} машин в составе", show_alert=True)
+        await callback.answer(f"Максимум {MAX_SQUAD_SIZE} поездов в составе", show_alert=True)
         return
 
     conn = await get_db()
@@ -119,7 +119,7 @@ async def save_squad(callback: CallbackQuery):
     if not selected:
         await callback.answer("Состав пуст", show_alert=True)
         return
-    await callback.message.answer(f"💾 Состав сохранён: {len(selected)} машин. Теперь найдите соперника!")
+    await callback.message.answer(f"💾 Состав сохранён: {len(selected)} поездов. Теперь найдите соперника!")
     await callback.answer()
 
 
@@ -260,7 +260,7 @@ async def find_opponent(callback: CallbackQuery, bot: Bot):
 
         if not opponent_squad:
             # На всякий случай: если состав соперника потерялся (например, рестарт бота),
-            # не даём бою пройти вничью без машин — отменяем его старую заявку и ставим свою.
+            # не даём бою пройти вничью без поездов — отменяем его старую заявку и ставим свою.
             await conn.execute("DELETE FROM duels WHERE duel_id = ?", (waiting_duel["duel_id"],))
             await conn.execute(
                 "INSERT INTO duels (player_a, stake_silver, status, created_at) VALUES (?, ?, 'waiting', ?)",

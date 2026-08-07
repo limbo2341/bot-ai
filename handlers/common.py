@@ -104,7 +104,7 @@ async def cmd_start(message: Message, command: CommandObject, state: FSMContext)
     if is_new:
         text = (
             "🚘 <b>Добро пожаловать в Carcollection!</b>\n━━━━━━━━━━━━━━\n"
-            "Собирайте суперкары, качайте гараж и зарабатывайте пассивный доход.\n\n"
+            "Собирайте суперкары, качайте депо и зарабатывайте пассивный доход.\n\n"
             "🎁 Стартовый бонус уже у вас на счету\n"
             "⚔️ Бросайте вызов другим игрокам в дуэлях\n"
             "📥 Открывайте контейнеры за шансом на редкие тачки\n"
@@ -172,7 +172,7 @@ async def menu_pvp(message: Message):
         "⚔️ <b>Бои и Клан</b>\n━━━━━━━━━━━━━━\n"
         "⚔️ Дуэли — сражайтесь с другими игроками\n"
         "🏛 Клан — совместные бонусы к доходу\n"
-        "🔨 Аукцион — покупка/продажа машин игрокам\n"
+        "🔨 Аукцион — покупка/продажа поездов игрокам\n"
         "🎰 Казино — мини-игры на фишки",
         parse_mode="HTML", reply_markup=menu_pvp_kb(),
     )
@@ -182,11 +182,11 @@ async def menu_pvp(message: Message):
 async def menu_economy(message: Message):
     await message.answer(
         "🏪 <b>Магазин и апгрейды</b>\n━━━━━━━━━━━━━━\n"
-        "🎁 Бесплатная машина — раз в несколько часов\n"
+        "🎁 Бесплатный поезд — раз в несколько часов\n"
         "⚙️ Улучшения — фарм, ангар, часы\n"
         "🛒 Магазин — паки за Stars\n"
-        "📥 Контейнеры — шанс на редкие машины\n"
-        "🧬 Слияние машин — дубликаты → гарантированная машина выше редкостью",
+        "📥 Контейнеры — шанс на редкие поезда\n"
+        "🧬 Слияние поездов — дубликаты → гарантированный поезд выше редкостью",
         parse_mode="HTML", reply_markup=menu_economy_kb(),
     )
 
@@ -330,7 +330,7 @@ async def _check_referral_milestone(bot, referrer_id: int) -> None:
     try:
         await bot.send_message(
             referrer_id,
-            f"🎉 Вы пригласили {REFERRAL_THRESHOLD} друзей и получили секретную машину: "
+            f"🎉 Вы пригласили {REFERRAL_THRESHOLD} друзей и получили секретную поезд: "
             f"<b>{car['brand']} {car['name']}</b>!",
             parse_mode="HTML",
         )
@@ -411,7 +411,7 @@ async def _render_profile(tg_id: int) -> tuple[str, str | None]:
         f"🎟 Фишки: <b>{u['chips']:,}</b>\n"
         f"⚡ Доход: <b>{income:,}</b> серебра/ч\n"
         f"{SEP}\n"
-        f"🚗 Слотов гаража: {u['slots_limit']}\n"
+        f"🚂 Слотов депо: {u['slots_limit']}\n"
         f"🏆 Место в топе богачей: #{rank_row['rank']}\n"
         f"🏛 Клан: {clan_name}\n"
         f"👁 Визитов в профиль: {u['profile_visits']}"
@@ -579,15 +579,15 @@ async def _apply_item_effect(tg_id: int, item_type: str, item_name: str) -> tupl
             cur = await conn.execute("SELECT car_id, name, brand FROM cars ORDER BY RANDOM() LIMIT 1")
         car = await cur.fetchone()
         if not car:
-            return "⚠️ Не удалось подобрать машину.", False
+            return "⚠️ Не удалось подобрать поезд.", False
         if not await has_garage_space(tg_id):
-            return "🚫 Гараж переполнен! Расширьте его в «⚙️ Улучшения», прежде чем использовать этот предмет.", False
+            return "🚫 Депо переполнено! Расширьте его в «⚙️ Улучшения», прежде чем использовать этот предмет.", False
         await conn.execute(
             "INSERT INTO user_garage (tg_id, car_id, acquired_date) VALUES (?, ?, ?)",
             (tg_id, car["car_id"], datetime.datetime.utcnow().isoformat()),
         )
         await conn.commit()
-        return f"🎉 Вы получили новую машину: <b>{car['brand']} {car['name']}</b>!", True
+        return f"🎉 Вы получили новую поезд: <b>{car['brand']} {car['name']}</b>!", True
 
     if item_type == "booster":
         if item_name == "XP бустер":

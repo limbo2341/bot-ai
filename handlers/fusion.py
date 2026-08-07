@@ -1,8 +1,8 @@
 """
-handlers/fusion.py — 🧬 Слияние машин: новая механика крафта.
+handlers/fusion.py — 🧬 Слияние поездов: новая механика крафта.
 
-Сдаёте N дубликатов машин одной редкости (плюс небольшую комиссию серебром) —
-получаете взамен ГАРАНТИРОВАННУЮ случайную машину следующей редкости. Даёт
+Сдаёте N дубликатов поездов одной редкости (плюс небольшую комиссию серебром) —
+получаете взамен ГАРАНТИРОВАННУЮ случайную поезд следующей редкости. Даёт
 дубликатам смысл существовать, кроме продажи за серебро, и даёт игрокам
 управляемый путь наверх по редкости без чистой удачи контейнеров.
 """
@@ -43,21 +43,21 @@ def _fusion_menu_kb(counts: dict) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-@router.message(F.text == "🧬 Слияние машин")
+@router.message(F.text == "🧬 Слияние поездов")
 async def show_fusion_menu(message: Message):
     counts = await _rarity_counts(message.from_user.id)
     await message.answer(
-        "🧬 <b>Слияние машин</b>\n━━━━━━━━━━━━━━\n"
-        "Сдайте несколько машин одной редкости (+ комиссия серебром) — получите взамен "
-        "ГАРАНТИРОВАННУЮ случайную машину следующей редкости. Никакой удачи — чистый расчёт.\n\n"
-        "Какие машины сольются — выбирает бот случайно среди дубликатов подходящей редкости.",
+        "🧬 <b>Слияние поездов</b>\n━━━━━━━━━━━━━━\n"
+        "Сдайте несколько поездов одной редкости (+ комиссия серебром) — получите взамен "
+        "ГАРАНТИРОВАННУЮ случайную поезд следующей редкости. Никакой удачи — чистый расчёт.\n\n"
+        "Какие поезда сольются — выбирает бот случайно среди дубликатов подходящей редкости.",
         parse_mode="HTML", reply_markup=_fusion_menu_kb(counts),
     )
 
 
 @router.callback_query(F.data == "fusion:locked")
 async def fusion_locked(callback: CallbackQuery):
-    await callback.answer("Недостаточно машин этой редкости для слияния", show_alert=True)
+    await callback.answer("Недостаточно поездов этой редкости для слияния", show_alert=True)
 
 
 @router.callback_query(F.data.startswith("fusion:do:"))
@@ -74,7 +74,7 @@ async def do_fusion(callback: CallbackQuery):
     )
     entries = await cur.fetchall()
     if len(entries) < req["count"]:
-        await callback.answer("Недостаточно машин этой редкости", show_alert=True)
+        await callback.answer("Недостаточно поездов этой редкости", show_alert=True)
         return
 
     cur = await conn.execute("SELECT silver FROM users WHERE tg_id = ?", (tg_id,))
@@ -90,7 +90,7 @@ async def do_fusion(callback: CallbackQuery):
     )
     new_car = await cur.fetchone()
     if not new_car:
-        await callback.answer("В каталоге пока нет машин этой редкости — попробуйте позже", show_alert=True)
+        await callback.answer("В каталоге пока нет поездов этой редкости — попробуйте позже", show_alert=True)
         return
 
     for entry in entries:

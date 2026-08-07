@@ -20,7 +20,7 @@ def main_menu_kb(is_admin: bool = False) -> ReplyKeyboardMarkup:
     разделах уникальны (не повторяются между категориями и пунктами), чтобы
     было интуитивно понятно, куда нажимать."""
     kb = [
-        [KeyboardButton(text="🚗 Гараж"), KeyboardButton(text="💰 Собрать")],
+        [KeyboardButton(text="🚂 Депо"), KeyboardButton(text="💰 Собрать")],
         [KeyboardButton(text="📈 Прогресс"), KeyboardButton(text="⚔️ Бои и Клан")],
         [KeyboardButton(text="🏪 Магазин и апгрейды"), KeyboardButton(text="🎀 Бонусы и ещё")],
     ]
@@ -47,9 +47,9 @@ def menu_pvp_kb() -> ReplyKeyboardMarkup:
 
 def menu_economy_kb() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[
-        [KeyboardButton(text="🎁 Бесплатная машина"), KeyboardButton(text="⚙️ Улучшения")],
+        [KeyboardButton(text="🎁 Бесплатный поезд"), KeyboardButton(text="⚙️ Улучшения")],
         [KeyboardButton(text="🛒 Магазин"), KeyboardButton(text="📥 Контейнеры")],
-        [KeyboardButton(text="🧬 Слияние машин")],
+        [KeyboardButton(text="🧬 Слияние поездов")],
         [KeyboardButton(text="⬅️ Главное меню")],
     ])
 
@@ -84,7 +84,7 @@ def promo_reward_type_kb(can_finish: bool = False) -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton(text="📦 Контейнер", callback_data="promo:type:container", style=ButtonStyle.PRIMARY),
-            InlineKeyboardButton(text="🚗 Машина", callback_data="promo:type:car", style=ButtonStyle.PRIMARY),
+            InlineKeyboardButton(text="🚂 Поезд", callback_data="promo:type:car", style=ButtonStyle.PRIMARY),
         ],
     ]
     if can_finish:
@@ -128,7 +128,7 @@ def upgrades_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="⚡ Улучшение фарма", callback_data="upg:farm", style=ButtonStyle.PRIMARY)],
         [InlineKeyboardButton(text="🏠 Улучшение ангара", callback_data="upg:garage", style=ButtonStyle.PRIMARY)],
         [InlineKeyboardButton(text="⏳ Улучшение часов фарма", callback_data="upg:hours", style=ButtonStyle.PRIMARY)],
-        [InlineKeyboardButton(text="🎁 Ускорение бесплатной машины", callback_data="upg:freecar", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(text="🎁 Ускорение бесплатной поезда", callback_data="upg:freecar", style=ButtonStyle.PRIMARY)],
         [InlineKeyboardButton(text=f"{BACK} в меню", callback_data="nav:economy", style=ButtonStyle.PRIMARY)],
     ])
 
@@ -250,7 +250,7 @@ def garage_sellmode_kb(cars: list, selected_ids: set, page: int, total_pages: in
         style=ButtonStyle.DANGER if count else None,
     )])
     rows.append([InlineKeyboardButton(text="🔄 Снять все галочки", callback_data=f"garage:sellclear:{owner_id}", style=ButtonStyle.PRIMARY)])
-    rows.append([InlineKeyboardButton(text=f"{BACK} в гараж", callback_data=f"garage:page:{owner_id}:1", style=ButtonStyle.PRIMARY)])
+    rows.append([InlineKeyboardButton(text=f"{BACK} в депо", callback_data=f"garage:page:{owner_id}:1", style=ButtonStyle.PRIMARY)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -269,7 +269,7 @@ def garage_car_detail_kb(entry_id: int, is_favorite: bool, owner_id: int, upgrad
         rows.append([InlineKeyboardButton(text="⭐ Максимальный уровень", callback_data="noop")])
     rows.append([InlineKeyboardButton(text="💵 Продать", callback_data=f"garage:sell:{owner_id}:{entry_id}",
                                        style=ButtonStyle.DANGER)])
-    rows.append([InlineKeyboardButton(text=f"{BACK} в гараж", callback_data=f"garage:page:{owner_id}:1", style=ButtonStyle.PRIMARY)])
+    rows.append([InlineKeyboardButton(text=f"{BACK} в депо", callback_data=f"garage:page:{owner_id}:1", style=ButtonStyle.PRIMARY)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -486,7 +486,7 @@ def auction_menu_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📋 Активные лоты", callback_data="auc:list:1", style=ButtonStyle.PRIMARY)],
         [InlineKeyboardButton(text="🗂 Мои лоты", callback_data="auc:mylots:1", style=ButtonStyle.PRIMARY)],
-        [InlineKeyboardButton(text="➕ Выставить машину", callback_data="auc:create", style=ButtonStyle.SUCCESS)],
+        [InlineKeyboardButton(text="➕ Выставить поезд", callback_data="auc:create", style=ButtonStyle.SUCCESS)],
         [InlineKeyboardButton(text=f"{BACK} в меню", callback_data="nav:pvp", style=ButtonStyle.PRIMARY)],
     ])
 
@@ -583,7 +583,7 @@ def broadcast_group_pick_kb(groups: list, selected: set) -> InlineKeyboardMarkup
 def wipe_category_kb(selected: set) -> InlineKeyboardMarkup:
     options = [
         ("currency", "💰 Валюта (серебро/золото/фишки)"),
-        ("garage", "🚗 Гараж (все машины)"),
+        ("garage", "🚂 Депо (все поезда)"),
         ("level", "📈 Уровень и опыт"),
         ("battlepass", "🎫 Боевой пропуск"),
         ("clan", "🏛 Клан (выход)"),
@@ -649,16 +649,16 @@ def ads_menu_kb(is_active: bool, group_count: int) -> InlineKeyboardMarkup:
 
 def admin_menu_kb(is_head: bool = False, admins_hidden: bool = False) -> InlineKeyboardMarkup:
     rows = [
-        [InlineKeyboardButton(text="➕ Добавить машину", callback_data="admin:addcar", style=ButtonStyle.SUCCESS)],
-        [InlineKeyboardButton(text="🎁 Выдать машину игроку", callback_data="admin:givecar", style=ButtonStyle.SUCCESS)],
+        [InlineKeyboardButton(text="➕ Добавить поезд", callback_data="admin:addcar", style=ButtonStyle.SUCCESS)],
+        [InlineKeyboardButton(text="🎁 Выдать поезд игроку", callback_data="admin:givecar", style=ButtonStyle.SUCCESS)],
         [InlineKeyboardButton(text="💰 Выдать валюту игроку", callback_data="admin:givecurrency", style=ButtonStyle.SUCCESS)],
-        [InlineKeyboardButton(text="🖼 Изменить фото машины", callback_data="admin:setphoto", style=ButtonStyle.PRIMARY)],
-        [InlineKeyboardButton(text="🗑 Удалить машину из каталога", callback_data="admin:delcar",
+        [InlineKeyboardButton(text="🖼 Изменить фото поезда", callback_data="admin:setphoto", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(text="🗑 Удалить поезд из каталога", callback_data="admin:delcar",
                                style=ButtonStyle.DANGER)],
         [InlineKeyboardButton(text="🗓 Новый сезон", callback_data="admin:addseason", style=ButtonStyle.PRIMARY)],
         [InlineKeyboardButton(text="📢 Рассылка", callback_data="admin:broadcast", style=ButtonStyle.PRIMARY)],
-        [InlineKeyboardButton(text="🔍 Гараж игрока (ID/username)", callback_data="admin:lookup", style=ButtonStyle.PRIMARY)],
-        [InlineKeyboardButton(text="📋 Каталог машин по редкости", callback_data="admin:catalog:1", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(text="🔍 Депо игрока (ID/username)", callback_data="admin:lookup", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(text="📋 Каталог поездов по редкости", callback_data="admin:catalog:1", style=ButtonStyle.PRIMARY)],
         [InlineKeyboardButton(text="📊 Статистика бота", callback_data="admin:stats", style=ButtonStyle.PRIMARY)],
         [InlineKeyboardButton(text="💸 История донатов", callback_data="admin:donations", style=ButtonStyle.PRIMARY)],
         [InlineKeyboardButton(text="🎟 Создать промокод", callback_data="promo:create", style=ButtonStyle.SUCCESS)],

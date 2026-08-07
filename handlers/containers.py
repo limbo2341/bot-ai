@@ -1,6 +1,6 @@
 """
 handlers/containers.py — контейнеры (гача-механика): покупка за серебро/золото/Stars,
-взвешенные шансы дропа машин по редкости, бустеров, XP и фишек.
+взвешенные шансы дропа поездов по редкости, бустеров, XP и фишек.
 """
 import datetime
 import random
@@ -51,8 +51,8 @@ async def _premium_price_for_qty(qty: int, tg_id: int | None = None) -> int:
 async def show_containers_menu(message: Message):
     await message.answer(
         "📥 <b>Контейнеры</b>\n━━━━━━━━━━━━━━\n"
-        "Откройте контейнер и получите случайную машину! Чем реже контейнер — "
-        "тем выше шансы на топовые машины.",
+        "Откройте контейнер и получите случайную поезд! Чем реже контейнер — "
+        "тем выше шансы на топовые поезда.",
         parse_mode="HTML", reply_markup=container_menu_kb(),
     )
 
@@ -61,8 +61,8 @@ async def show_containers_menu(message: Message):
 async def containers_back(callback: CallbackQuery):
     await callback.message.answer(
         "📥 <b>Контейнеры</b>\n━━━━━━━━━━━━━━\n"
-        "Откройте контейнер и получите случайную машину! Чем реже контейнер — "
-        "тем выше шансы на топовые машины.",
+        "Откройте контейнер и получите случайную поезд! Чем реже контейнер — "
+        "тем выше шансы на топовые поезда.",
         parse_mode="HTML", reply_markup=container_menu_kb(),
     )
     await callback.answer()
@@ -74,7 +74,7 @@ async def premium_container_menu(callback: CallbackQuery):
     extra_note = "\n💎 У вас Premium BP — дополнительная скидка уже применена!" if is_premium else ""
     await callback.message.answer(
         "💎 <b>Премиум контейнер</b>\n━━━━━━━━━━━━━━\n"
-        f"Самые высокие шансы на Ultra-Rare и Secret машины. Берите пачкой — дешевле за штуку!{extra_note}",
+        f"Самые высокие шансы на Ultra-Rare и Secret поезда. Берите пачкой — дешевле за штуку!{extra_note}",
         parse_mode="HTML", reply_markup=premium_container_qty_kb(is_premium),
     )
     await callback.answer()
@@ -146,7 +146,7 @@ async def buy_container(callback: CallbackQuery, bot: Bot):
             payload = json.dumps({"container": container_key, "qty": 1, "tg_id": tg_id})
             await bot.send_invoice(
                 chat_id=tg_id, title=CONTAINER_LABELS[container_key],
-                description="Открывает шанс на редчайшие машины — покупка звёздами поддерживает проект.",
+                description="Открывает шанс на редчайшие поезда — покупка звёздами поддерживает проект.",
                 payload=payload, provider_token="", currency=STARS_CURRENCY,
                 prices=[LabeledPrice(label=CONTAINER_LABELS[container_key], amount=cost["stars"])],
             )
@@ -198,7 +198,7 @@ async def buy_container(callback: CallbackQuery, bot: Bot):
         await bot.send_invoice(
             chat_id=tg_id,
             title=label,
-            description="Открывает шанс на редчайшие машины из каталога.",
+            description="Открывает шанс на редчайшие поезда из каталога.",
             payload=payload,
             provider_token="",
             currency=STARS_CURRENCY,
@@ -274,18 +274,18 @@ async def _open_container(tg_id: int, container_key: str):
     )
     car = await cur.fetchone()
     if not car:
-        return None, "⚠️ Не удалось подобрать машину для этого контейнера."
+        return None, "⚠️ Не удалось подобрать поезд для этого контейнера."
 
     if not await has_garage_space(tg_id):
-        # Гараж уже полон (актуально для оплаты Stars — деньги списаны заранее,
-        # отказать в машине нельзя). Продаём её сразу за серебро вместо потери.
+        # Депо уже полно (актуально для оплаты Stars — деньги списаны заранее,
+        # отказать в поезде нельзя). Продаём её сразу за серебро вместо потери.
         cur2 = await conn.execute("SELECT base_value FROM cars WHERE car_id = ?", (car["car_id"],))
         base_value = (await cur2.fetchone())["base_value"]
         await conn.execute("UPDATE users SET silver = silver + ? WHERE tg_id = ?", (base_value, tg_id))
         await conn.commit()
         emoji = RARITY_EMOJI.get(chosen_rarity, "⚪")
         text = (f"📦 <b>Контейнер открыт!</b>\n\n{emoji} Вам выпала: <b>{car['brand']} {car['name']}</b>, но "
-                f"гараж переполнен — машина автоматически продана за {base_value:,} серебра.".replace(",", " "))
+                f"депо переполнено — поезд автоматически продан за {base_value:,} серебра.".replace(",", " "))
         return car, text
 
     await conn.execute(

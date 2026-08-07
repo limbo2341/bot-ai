@@ -1,5 +1,5 @@
 """
-handlers/freecar.py — бесплатная машина раз в N часов (по умолчанию 2ч),
+handlers/freecar.py — бесплатный поезд раз в N часов (по умолчанию 2ч),
 кулдаун можно сократить через прокачку (см. upg:freecar в keyboards.py).
 """
 import datetime
@@ -25,7 +25,7 @@ def _current_cooldown_seconds(upgrade_level: int) -> int:
     )
 
 
-@router.message(F.text == "🎁 Бесплатная машина")
+@router.message(F.text == "🎁 Бесплатный поезд")
 async def claim_free_car(message: Message):
     tg_id = message.from_user.id
     conn = await get_db()
@@ -45,15 +45,15 @@ async def claim_free_car(message: Message):
             h, rem = divmod(remaining, 3600)
             m, s = divmod(rem, 60)
             await message.answer(
-                f"⏳ Бесплатная машина ещё не готова.\nОсталось: {h}ч {m}м {s}с.\n\n"
-                f"💡 Кулдаун можно сократить в разделе «⚙️ Улучшения» → «🎁 Ускорение бесплатной машины»."
+                f"⏳ Бесплатный поезд ещё не готов.\nОсталось: {h}ч {m}м {s}с.\n\n"
+                f"💡 Кулдаун можно сократить в разделе «⚙️ Улучшения» → «🎁 Ускорение бесплатной поезда»."
             )
             return
 
     if not await has_garage_space(tg_id):
         await message.answer(
-            "🚫 Гараж переполнен! Расширьте его в «⚙️ Улучшения» или продайте машины — "
-            "кулдаун бесплатной машины не потрачен, попробуйте снова после этого."
+            "🚫 Депо переполнено! Расширьте его в «⚙️ Улучшения» или продайте поезда — "
+            "кулдаун бесплатной поезда не потрачен, попробуйте снова после этого."
         )
         return
 
@@ -68,7 +68,7 @@ async def claim_free_car(message: Message):
     )
     car = await cur.fetchone()
     if not car:
-        await message.answer("⚠️ Не удалось подобрать машину. Попробуйте чуть позже.")
+        await message.answer("⚠️ Не удалось подобрать поезд. Попробуйте чуть позже.")
         return
 
     cur = await conn.execute(
@@ -86,9 +86,9 @@ async def claim_free_car(message: Message):
     await add_user_exp(tg_id, 10)
 
     emoji = RARITY_EMOJI.get(chosen_rarity, "⚪")
-    duplicate_note = "\n♻️ Такая машина уже есть в гараже — можно продать эту копию." if is_duplicate else ""
+    duplicate_note = "\n♻️ Такой поезд уже есть в депо — можно продать эту копию." if is_duplicate else ""
     text = (
-        f"🎁 <b>Бесплатная машина получена!</b>\n━━━━━━━━━━━━━━\n"
+        f"🎁 <b>Бесплатный поезд получен!</b>\n━━━━━━━━━━━━━━\n"
         f"{emoji} <b>{car['brand']} {car['name']}</b>\nТир {car['tier']} | {chosen_rarity}\n"
         f"⚡ Доход: {car['hourly_income']:,} серебра/ч{duplicate_note}\n━━━━━━━━━━━━━━\n"
         f"Следующая через {_current_cooldown_seconds(u['free_car_cooldown_reduction']) // 60} мин."
@@ -116,7 +116,7 @@ async def upg_freecar_menu(callback: CallbackQuery):
 
     if current_level >= FREE_CAR_MAX_UPGRADE_LEVEL:
         await callback.message.answer(
-            f"🎁 <b>Ускорение бесплатной машины</b>\n━━━━━━━━━━━━━━\n"
+            f"🎁 <b>Ускорение бесплатной поезда</b>\n━━━━━━━━━━━━━━\n"
             f"🟩🟩🟩🟩🟩\nКулдаун: {h}ч {m}м (МАКСИМУМ {FREE_CAR_MAX_UPGRADE_LEVEL}/{FREE_CAR_MAX_UPGRADE_LEVEL})",
             parse_mode="HTML",
         )
@@ -128,7 +128,7 @@ async def upg_freecar_menu(callback: CallbackQuery):
     can_afford = u["silver"] >= cost_silver and u["gold"] >= cost_gold
     bar = "🟩" * current_level + "⬜️" * (FREE_CAR_MAX_UPGRADE_LEVEL - current_level)
     await callback.message.answer(
-        f"🎁 <b>Ускорение бесплатной машины</b>\n━━━━━━━━━━━━━━\n"
+        f"🎁 <b>Ускорение бесплатной поезда</b>\n━━━━━━━━━━━━━━\n"
         f"Уровень {current_level}/{FREE_CAR_MAX_UPGRADE_LEVEL}\n{bar}\n"
         f"Текущий кулдаун: {h}ч {m}м\n━━━━━━━━━━━━━━\n"
         f"Ур. {next_level}: {cost_silver:,} серебра + {cost_gold} золота".replace(",", " "),

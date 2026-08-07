@@ -432,150 +432,149 @@ MIGRATIONS = [
 # Базовый доход за час на 1 единицу тира (до 2026-07-16 было 40 — увеличено
 # по просьбе, чтобы фарм в целом приносил больше). Используется и при
 # генерации каталога, и в идемпотентном пересчёте _rebalance_car_income().
-INCOME_BASE_PER_TIER = 80  # было 55 — доход с машин поднят примерно на 45%
+INCOME_BASE_PER_TIER = 80  # было 55 — доход с поездов поднят примерно на 45%
 
 
 # Слаг редкости -> имя файла в assets/car_placeholders/ (оригинальные
 # стилизованные карточки-заглушки, нарисованные локально — не фото реальных
-# машин конкретных марок, чтобы не нарушать авторские права производителей).
+# поездов конкретных марок, чтобы не нарушать авторские права производителей).
 RARITY_IMAGE_SLUG = {
     "Common": "common", "Uncommon": "uncommon", "Rare": "rare", "Epic": "epic",
     "Legendary": "legendary", "Ultra-Rare": "ultra-rare", "Secret": "secret",
 }
-CAR_PLACEHOLDERS_DIR = "assets/car_placeholders"
+CAR_PLACEHOLDERS_DIR = "assets/train_placeholders"
 
 
 def _build_car_catalog() -> list[tuple]:
     """
-    Строит каталог из 100+ реальных машин с характеристиками,
+    Строит каталог из 100+ реальных поездов с характеристиками,
     рассчитанными по редкости/тиру, чтобы экономика была сбалансирована.
     Формат кортежа: (name, brand, rarity, tier, hourly_income, base_value, image_url)
     """
     # (brand, model, rarity, tier)
     roster = [
         # ---- Common / Tier I-III ----
-        ("Lada", "Riva", "Common", "I"),
-        ("Lada", "Priora", "Common", "I"),
-        ("Daewoo", "Lanos", "Common", "I"),
-        ("Daewoo", "Nexia", "Common", "I"),
-        ("Chevrolet", "Aveo", "Common", "II"),
-        ("Chevrolet", "Spark", "Common", "I"),
-        ("Hyundai", "Accent", "Common", "II"),
-        ("Hyundai", "Getz", "Common", "I"),
-        ("Fiat", "Panda", "Common", "I"),
-        ("Fiat", "Punto", "Common", "II"),
-        ("Renault", "Logan", "Common", "II"),
-        ("Renault", "Sandero", "Common", "II"),
-        ("Kia", "Rio", "Common", "II"),
-        ("Kia", "Picanto", "Common", "I"),
-        ("Toyota", "Corolla", "Common", "III"),
-        ("Toyota", "Yaris", "Common", "II"),
-        ("Honda", "Civic", "Common", "III"),
-        ("Honda", "Fit", "Common", "II"),
-        ("Volkswagen", "Golf", "Common", "III"),
-        ("Volkswagen", "Polo", "Common", "II"),
-        ("Ford", "Focus", "Common", "III"),
-        ("Ford", "Fiesta", "Common", "II"),
-        ("Skoda", "Octavia", "Uncommon", "III"),
-        ("Skoda", "Fabia", "Common", "II"),
-        ("Opel", "Astra", "Uncommon", "III"),
-        ("Opel", "Corsa", "Common", "II"),
-        ("Peugeot", "308", "Uncommon", "III"),
-        ("Citroen", "C4", "Uncommon", "III"),
-        ("Nissan", "Almera", "Common", "II"),
-        ("Mazda", "3", "Uncommon", "III"),
+        ("Stadler", "GTW", "Common", "I"),
+        ("Stadler", "FLIRT", "Common", "II"),
+        ("PESA", "Elf", "Common", "I"),
+        ("PESA", "Link", "Common", "II"),
+        ("Skoda", "RegioPanter", "Common", "II"),
+        ("Skoda", "ForCity", "Common", "I"),
+        ("CRRC", "CityStar", "Common", "II"),
+        ("CRRC", "Urban Express", "Common", "I"),
+        ("Alstom", "Coradia Lint", "Common", "II"),
+        ("Alstom", "Citadis Tram", "Common", "I"),
+        ("Bombardier", "Talent", "Common", "II"),
+        ("Bombardier", "Flexity", "Common", "I"),
+        ("Siemens", "Desiro Classic", "Common", "II"),
+        ("Siemens", "Combino", "Common", "I"),
+        ("Hyundai Rotem", "Urban EMU", "Common", "II"),
+        ("CAF", "Civia", "Common", "II"),
+        ("CAF", "Urbos Tram", "Common", "I"),
+        ("Talgo", "Regional", "Common", "III"),
+        ("Hitachi", "Class 150", "Common", "II"),
+        ("Vossloh", "Euro4000 Regio", "Common", "II"),
+        ("Newag", "Impuls", "Common", "II"),
+        ("Stadler", "Regio-Shuttle", "Common", "I"),
+        ("Kawasaki", "Commuter Set", "Common", "II"),
+        ("Kinki Sharyo", "LRV", "Common", "I"),
+        ("Bombardier", "Talent 2", "Common", "III"),
         # ---- Uncommon / Tier IV ----
-        ("Volkswagen", "Passat", "Uncommon", "IV"),
-        ("Toyota", "Camry", "Uncommon", "IV"),
-        ("Honda", "Accord", "Uncommon", "IV"),
-        ("Mazda", "6", "Uncommon", "IV"),
-        ("Hyundai", "Sonata", "Uncommon", "IV"),
-        ("Kia", "Optima", "Uncommon", "IV"),
-        ("Nissan", "Altima", "Uncommon", "IV"),
-        ("Ford", "Mondeo", "Uncommon", "IV"),
-        ("Subaru", "Legacy", "Uncommon", "IV"),
-        ("Chevrolet", "Malibu", "Uncommon", "IV"),
+        ("Stadler", "KISS", "Uncommon", "IV"),
+        ("Siemens", "Desiro HC", "Uncommon", "IV"),
+        ("Alstom", "Coradia Stream", "Uncommon", "IV"),
+        ("Bombardier", "Twindexx", "Uncommon", "IV"),
+        ("CAF", "Oaris", "Uncommon", "IV"),
+        ("Talgo", "Vittal One", "Uncommon", "IV"),
+        ("Skoda", "RegioPanter Duo", "Uncommon", "IV"),
+        ("CRRC", "Fuxing Regional", "Uncommon", "IV"),
+        ("Hitachi", "Class 800", "Uncommon", "IV"),
+        ("Siemens", "Vectron Regio", "Uncommon", "IV"),
+        ("Alstom", "Regiolis", "Uncommon", "IV"),
+        ("Bombardier", "Regio 2N", "Uncommon", "IV"),
+        ("Newag", "Griffin", "Uncommon", "IV"),
+        ("Stadler", "FLIRT Akku", "Uncommon", "IV"),
+        ("CAF", "Civity Regional", "Uncommon", "IV"),
+        ("PESA", "Dart", "Uncommon", "IV"),
+        ("Hyundai Rotem", "KTX-Eum", "Uncommon", "IV"),
+        ("Talgo", "Avril Regional", "Uncommon", "IV"),
+        ("Siemens", "Mireo", "Uncommon", "IV"),
+        ("Vossloh", "Citylink", "Uncommon", "IV"),
+        ("Alstom", "Coradia Polyvalent", "Uncommon", "IV"),
+        ("Bombardier", "Zefiro Regional", "Uncommon", "IV"),
         # ---- Rare / Tier V-VI ----
-        ("BMW", "3-Series", "Rare", "V"),
-        ("Mercedes-Benz", "C-Class", "Rare", "V"),
-        ("Audi", "A4", "Rare", "V"),
-        ("Subaru", "Impreza WRX", "Rare", "VI"),
-        ("Mitsubishi", "Lancer Evolution", "Rare", "VI"),
-        ("Mazda", "RX-8", "Rare", "VI"),
-        ("Ford", "Mustang GT", "Rare", "VI"),
-        ("Chevrolet", "Camaro SS", "Rare", "VI"),
-        ("Dodge", "Challenger R/T", "Rare", "VI"),
-        ("Nissan", "350Z", "Rare", "V"),
-        ("Nissan", "370Z", "Rare", "VI"),
-        ("Toyota", "Supra MK4", "Rare", "VI"),
-        ("Volkswagen", "Golf R", "Rare", "V"),
-        ("Audi", "TT RS", "Rare", "VI"),
-        ("BMW", "1M Coupe", "Rare", "VI"),
+        ("Siemens", "Vectron", "Rare", "V"),
+        ("Bombardier", "TRAXX", "Rare", "V"),
+        ("Alstom", "Prima", "Rare", "V"),
+        ("CAF", "Civity Express", "Rare", "VI"),
+        ("Stadler", "Giruno", "Rare", "VI"),
+        ("Siemens", "ICE T", "Rare", "VI"),
+        ("Talgo", "250", "Rare", "VI"),
+        ("Hyundai Rotem", "KTX-Sancheon", "Rare", "VI"),
+        ("CRRC", "Fuxing CR200J", "Rare", "V"),
+        ("Hitachi", "Azuma", "Rare", "VI"),
+        ("Bombardier", "Zefiro Express", "Rare", "VI"),
+        ("Alstom", "Pendolino", "Rare", "VI"),
+        ("Siemens", "Railjet", "Rare", "VI"),
+        ("CAF", "AVRIL Coastal", "Rare", "VI"),
+        ("Talgo", "Avril", "Rare", "VI"),
+        ("Stadler", "FLIRT Express", "Rare", "V"),
+        ("Bombardier", "ICx", "Rare", "VI"),
+        ("Skoda", "RegioJet 660", "Rare", "VI"),
+        ("Newag", "Dart Express", "Rare", "V"),
+        ("CRRC", "CR300", "Rare", "VI"),
+        ("Alstom", "ETR 470", "Rare", "VI"),
+        ("Siemens", "ICE 1", "Rare", "VI"),
+        ("Bombardier", "Turbotrain", "Rare", "V"),
+        ("Hitachi", "Frecciarossa 1000 Jr", "Rare", "VI"),
+        ("Talgo", "Pendular", "Rare", "V"),
+        ("CAF", "Talgo 350", "Rare", "VI"),
+        ("Stadler", "TILO", "Rare", "V"),
         # ---- Epic / Tier VII-VIII ----
-        ("Porsche", "911 Carrera", "Epic", "VII"),
-        ("BMW", "M5", "Epic", "VIII"),
-        ("Mercedes-AMG", "E63 AMG", "Epic", "VIII"),
-        ("Audi", "RS6", "Epic", "VIII"),
-        ("Nissan", "GT-R", "Epic", "VIII"),
-        ("Chevrolet", "Corvette C7", "Epic", "VII"),
-        ("Jaguar", "F-Type R", "Epic", "VII"),
-        ("Aston Martin", "Vantage", "Epic", "VII"),
-        ("Lexus", "LC500", "Epic", "VII"),
-        ("Maserati", "GranTurismo", "Epic", "VII"),
-        ("BMW", "M3 Competition", "Epic", "VII"),
-        ("Mercedes-AMG", "C63 AMG", "Epic", "VII"),
-        ("Audi", "RS7", "Epic", "VIII"),
-        ("Cadillac", "CTS-V", "Epic", "VII"),
-        ("Lexus", "RC F", "Epic", "VII"),
-        ("Alfa Romeo", "Giulia Quadrifoglio", "Epic", "VII"),
+        ("Siemens", "ICE 3", "Epic", "VIII"),
+        ("Alstom", "TGV Duplex", "Epic", "VIII"),
+        ("Bombardier", "Zefiro 380", "Epic", "VIII"),
+        ("Hitachi", "Frecciarossa 1000", "Epic", "VIII"),
+        ("CRRC", "Fuxing CR400AF", "Epic", "VIII"),
+        ("Hyundai Rotem", "KTX-Sancheon HS", "Epic", "VII"),
+        ("Talgo", "Avril 350", "Epic", "VII"),
+        ("Siemens", "Velaro", "Epic", "VIII"),
+        ("Alstom", "AGV", "Epic", "VIII"),
+        ("CAF", "Oaris 350", "Epic", "VII"),
+        ("Kawasaki", "Shinkansen E5", "Epic", "VIII"),
+        ("Hitachi", "Shinkansen N700S", "Epic", "VIII"),
+        ("Bombardier", "JetTrain", "Epic", "VII"),
+        ("Siemens", "ICE 4", "Epic", "VII"),
+        ("Alstom", "Avelia Liberty", "Epic", "VIII"),
+        ("Stadler", "Astoro", "Epic", "VII"),
+        ("CRRC", "Fuxing CR400BF", "Epic", "VIII"),
         # ---- Legendary / Tier IX ----
-        ("Ferrari", "F8 Tributo", "Legendary", "IX"),
-        ("Lamborghini", "Huracan", "Legendary", "IX"),
-        ("Porsche", "911 GT3 RS", "Legendary", "IX"),
-        ("McLaren", "720S", "Legendary", "IX"),
-        ("Aston Martin", "DB11", "Legendary", "IX"),
-        ("Ferrari", "812 Superfast", "Legendary", "IX"),
-        ("Lamborghini", "Aventador", "Legendary", "IX"),
-        ("Bentley", "Continental GT", "Legendary", "IX"),
-        ("Rolls-Royce", "Wraith", "Legendary", "IX"),
-        ("Maserati", "MC20", "Legendary", "IX"),
+        ("Alstom", "TGV POS", "Legendary", "IX"),
+        ("JR Central", "Shinkansen N700", "Legendary", "IX"),
+        ("Siemens", "Velaro Novo", "Legendary", "IX"),
+        ("CRRC", "Fuxing Hao", "Legendary", "IX"),
+        ("Alstom", "Avelia Horizon", "Legendary", "IX"),
+        ("Kawasaki", "Shinkansen E7", "Legendary", "IX"),
+        ("Talgo", "Avril XXL", "Legendary", "IX"),
+        ("Hitachi", "ETR 1000 Frecciarossa", "Legendary", "IX"),
+        ("Siemens", "Desiro HS Gold", "Legendary", "IX"),
+        ("CAF", "Oaris Gold", "Legendary", "IX"),
         # ---- Ultra-Rare / Tier X ----
-        ("Bugatti", "Chiron", "Ultra-Rare", "X"),
-        ("Pagani", "Huayra", "Ultra-Rare", "X"),
-        ("Koenigsegg", "Jesko", "Ultra-Rare", "X"),
-        ("Aston Martin", "Valkyrie", "Ultra-Rare", "X"),
-        ("Porsche", "918 Spyder", "Ultra-Rare", "X"),
-        ("McLaren", "P1", "Ultra-Rare", "X"),
-        ("Ferrari", "LaFerrari", "Ultra-Rare", "X"),
-        ("Koenigsegg", "Regera", "Ultra-Rare", "X"),
-        ("Bugatti", "Divo", "Ultra-Rare", "X"),
+        ("JR Central", "SCMaglev L0", "Ultra-Rare", "X"),
+        ("CRRC", "Fuxing CR450", "Ultra-Rare", "X"),
+        ("Siemens", "Transrapid", "Ultra-Rare", "X"),
+        ("Alstom", "TGV V150", "Ultra-Rare", "X"),
+        ("Hyperloop TT", "Pod One", "Ultra-Rare", "X"),
+        ("China Railway", "CR450AF Prototype", "Ultra-Rare", "X"),
+        ("JR East", "ALFA-X", "Ultra-Rare", "X"),
+        ("Virgin Hyperloop", "XP-2", "Ultra-Rare", "X"),
+        ("SNCF", "TGV Iris 320 Record", "Ultra-Rare", "X"),
         # ---- Secret / Tier X (top of the pyramid) ----
-        ("Ferrari", "LaFerrari Aperta", "Secret", "X"),
-        ("Bugatti", "Bolide", "Secret", "X"),
-        ("Koenigsegg", "One:1", "Secret", "X"),
-        ("Pagani", "Zonda HP Barchetta", "Secret", "X"),
-        ("Mercedes-Benz", "AMG ONE", "Secret", "X"),
-        # ---- filler to broaden roster (Common-Rare daily drivers/tuners) ----
-        ("Toyota", "Corolla GR", "Uncommon", "III"),
-        ("Honda", "Civic Type R", "Rare", "VI"),
-        ("Volkswagen", "Scirocco", "Uncommon", "IV"),
-        ("Peugeot", "208 GTI", "Uncommon", "IV"),
-        ("Renault", "Megane RS", "Rare", "V"),
-        ("Seat", "Leon Cupra", "Rare", "V"),
-        ("Skoda", "Superb", "Uncommon", "IV"),
-        ("Toyota", "Land Cruiser", "Rare", "VI"),
-        ("Jeep", "Wrangler", "Uncommon", "IV"),
-        ("Land Rover", "Defender", "Rare", "VI"),
-        ("Range Rover", "Sport SVR", "Epic", "VII"),
-        ("GMC", "Yukon Denali", "Uncommon", "IV"),
-        ("Ford", "Raptor F-150", "Rare", "VI"),
-        ("Dodge", "RAM 1500 TRX", "Rare", "VI"),
-        ("Chevrolet", "Silverado ZR2", "Uncommon", "V"),
-        ("Toyota", "GR86", "Rare", "V"),
-        ("Subaru", "BRZ", "Rare", "V"),
-        ("Hyundai", "Elantra N", "Rare", "V"),
-        ("Kia", "Stinger GT", "Rare", "VI"),
-        ("Genesis", "G70", "Rare", "VI"),
+        ("Orient Express", "La Dolce Vita", "Secret", "X"),
+        ("Rocky Mountaineer", "GoldLeaf", "Secret", "X"),
+        ("Japan Rail", "Shiki-Shima", "Secret", "X"),
+        ("Belmond", "Venice Simplon-Orient-Express", "Secret", "X"),
+        ("Rovos Rail", "Pride of Africa", "Secret", "X"),
     ]
 
     # Значения экономики зависят от тира (I..X -> 1..10)
@@ -604,7 +603,7 @@ def _build_car_catalog() -> list[tuple]:
 
 
 async def init_db() -> None:
-    """Создаёт схему БД, накатывает миграции и заполняет каталог машин при первом запуске."""
+    """Создаёт схему БД, накатывает миграции и заполняет каталог поездов при первом запуске."""
     conn = await get_db()
     await conn.executescript(SCHEMA)
     await conn.commit()
@@ -614,7 +613,7 @@ async def init_db() -> None:
     await conn.commit()
 
     # Одноразовая очистка: лоты, оставшиеся от старой системы аукциона (фикс-цена,
-    # без ends_at) возвращаем владельцам в гараж, чтобы машины не потерялись при
+    # без ends_at) возвращаем владельцам в депо, чтобы поезда не потерялись при
     # переходе на новую систему со ставками.
     cur_legacy = await conn.execute("SELECT * FROM auctions WHERE ends_at IS NULL")
     legacy_lots = await cur_legacy.fetchall()
@@ -642,7 +641,7 @@ async def init_db() -> None:
 
 
 async def _rebalance_car_income() -> None:
-    """Идемпотентно пересчитывает доход/цену машин по текущей формуле баланса.
+    """Идемпотентно пересчитывает доход/цену поездов по текущей формуле баланса.
     Безопасно запускать при каждом старте — значения не накапливаются, а
     просто выставляются заново по тем же tier/rarity, что уже есть в базе."""
     conn = await get_db()
@@ -675,7 +674,7 @@ async def _rebalance_car_income() -> None:
         else:
             # Первая миграция со старого формата (URL-плейсхолдер или пусто) —
             # сбрасываем закэшированный file_id, иначе игроки продолжат видеть
-            # старую картинку вместо новой отрисованной карточки машины.
+            # старую картинку вместо новой отрисованной карточки поезда.
             await conn.execute(
                 "UPDATE cars SET hourly_income = ?, base_value = ?, image_url = ?, telegram_file_id = NULL "
                 "WHERE car_id = ?",
@@ -690,7 +689,7 @@ async def _rebalance_car_income() -> None:
             """INSERT INTO active_season (title, duration_days, image_url, start_date, is_active)
                VALUES (?, ?, ?, ?, 1)""",
             (
-                "Сезон 1: Гараж мечты",
+                "Сезон 1: Депо мечты",
                 30,
                 "https://placehold.co/800x400?text=Season+1",
                 datetime.datetime.utcnow().isoformat(),
@@ -774,7 +773,7 @@ async def resolve_player(query: str):
 
 
 async def get_garage_usage(tg_id: int) -> tuple[int, int]:
-    """Возвращает (текущее количество машин в гараже, лимит слотов) игрока."""
+    """Возвращает (текущее количество поездов в депо, лимит слотов) игрока."""
     conn = await get_db()
     cur = await conn.execute("SELECT slots_limit FROM users WHERE tg_id = ?", (tg_id,))
     row = await cur.fetchone()
@@ -814,11 +813,11 @@ async def add_user_exp(tg_id: int, amount: int) -> tuple[int, bool]:
 async def send_car_photo(target, car_id: int, image_url: str | None, telegram_file_id: str | None,
                           caption: str, parse_mode: str = "HTML", reply_markup=None) -> bool:
     """
-    Отправляет карточку машины как фото с кэшированием file_id:
+    Отправляет карточку поезда как фото с кэшированием file_id:
     1) если уже есть закэшированный telegram_file_id — используем его (быстро,
        не зависит от внешнего сервиса-заглушки);
     2) иначе пробуем image_url и, если Telegram успешно его принял, сохраняем
-       полученный file_id в базу для всех будущих показов этой машины;
+       полученный file_id в базу для всех будущих показов этой поезда;
     3) если оба варианта не сработали — возвращаем False (вызывающий код
        должен показать текстовое сообщение как запасной вариант).
     target — объект с методом .answer_photo(...) (aiogram Message или CallbackQuery.message).
@@ -911,7 +910,7 @@ async def get_not_subscribed_channels(bot, tg_id: int) -> list:
 
 # ---------------------------------------------------------------- Premium BP — общий хелпер
 async def is_user_premium(tg_id: int) -> bool:
-    """Общая проверка активного Premium BP — используется гаражом, бонусами,
+    """Общая проверка активного Premium BP — используется депо, бонусами,
     контейнерами и т.д. для начисления премиум-плюшек."""
     conn = await get_db()
     cur = await conn.execute(

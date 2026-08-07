@@ -1,5 +1,5 @@
 """
-handlers/admin.py — административная панель: динамическое добавление машин,
+handlers/admin.py — административная панель: динамическое добавление поездов,
 сезонов, экономика, модерация и рассылка. Доступно только ADMIN_IDS.
 """
 import asyncio
@@ -336,7 +336,7 @@ async def admin_mgmt_remove(callback: CallbackQuery):
 
 # ---------------------------------------------------------------- Обнуление аккаунта (только глав. админ, скрыто)
 _WIPE_CATEGORY_LABELS = {
-    "currency": "💰 Валюта", "garage": "🚗 Гараж", "level": "📈 Уровень и опыт",
+    "currency": "💰 Валюта", "garage": "🚂 Депо", "level": "📈 Уровень и опыт",
     "battlepass": "🎫 Боевой пропуск", "clan": "🏛 Клан", "inventory": "📦 Инвентарь",
     "stats": "📊 Статистика активности",
 }
@@ -733,7 +733,7 @@ async def admin_lookup_start(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
     await callback.message.answer(
-        "🔍 Введите Telegram ID игрока (число) или его username (с @ или без) — покажу его гараж."
+        "🔍 Введите Telegram ID игрока (число) или его username (с @ или без) — покажу его депо."
     )
     await state.set_state(LookupPlayerStates.waiting_query)
     await callback.answer()
@@ -771,7 +771,7 @@ async def admin_lookup_query(message: Message, state: FSMContext):
     lines = [
         f"👤 <b>{player['username'] or player['tg_id']}</b> (ID: {player['tg_id']})",
         f"Уровень: {player['level']} | Серебро: {player['silver']:,} | Золото: {player['gold']:,}".replace(",", " "),
-        f"\n🚗 <b>Гараж</b> ({len(cars)} машин, показаны последние 50):",
+        f"\n🚂 <b>Депо</b> ({len(cars)} поездов, показаны последние 50):",
     ]
     if not cars:
         lines.append("— пусто —")
@@ -779,7 +779,7 @@ async def admin_lookup_query(message: Message, state: FSMContext):
         emoji = RARITY_EMOJI.get(c["rarity"], "⚪")
         lines.append(f"{emoji} {c['brand']} {c['name']} (T{c['tier']}) — {c['hourly_income']:,}/ч".replace(",", " "))
 
-    # Telegram ограничивает длину сообщения — если гараж очень большой, режем на части.
+    # Telegram ограничивает длину сообщения — если депо очень большое, режем на части.
     text = "\n".join(lines)
     for chunk_start in range(0, len(text), 3500):
         await message.answer(text[chunk_start:chunk_start + 3500], parse_mode="HTML")
@@ -805,7 +805,7 @@ async def admin_catalog(callback: CallbackQuery):
     start = (page - 1) * CATALOG_PAGE_SIZE
     page_cars = all_cars[start:start + CATALOG_PAGE_SIZE]
 
-    lines = [f"📋 <b>Каталог машин</b> (стр. {page}/{total_pages}, всего {len(all_cars)})\n"]
+    lines = [f"📋 <b>Каталог поездов</b> (стр. {page}/{total_pages}, всего {len(all_cars)})\n"]
     last_rarity = None
     for c in page_cars:
         if c["rarity"] != last_rarity:
@@ -855,7 +855,7 @@ async def _perform_admin_action(action_type: str, target_tg_id: int, currency: s
              payload["hourly_income"], payload["base_value"], payload["file_id"]),
         )
         await conn.commit()
-        return f"добавлена машина {payload['brand']} {payload['name']}"
+        return f"добавлена поезд {payload['brand']} {payload['name']}"
 
     elif action_type == "delete_car":
         cur = await conn.execute("SELECT name, brand FROM cars WHERE car_id = ?", (car_id,))
@@ -863,7 +863,7 @@ async def _perform_admin_action(action_type: str, target_tg_id: int, currency: s
         label = f"{car['brand']} {car['name']}" if car else f"#{car_id}"
         await conn.execute("DELETE FROM cars WHERE car_id = ?", (car_id,))
         await conn.commit()
-        return f"машина {label} удалена из каталога"
+        return f"поезд {label} удалён из каталога"
 
     elif action_type == "set_photo":
         cur = await conn.execute("SELECT name, brand FROM cars WHERE car_id = ?", (car_id,))
@@ -976,13 +976,13 @@ async def handle_admin_request_decision(callback: CallbackQuery):
     await callback.answer()
 
 
-# ---------------------------------------------------------------- Выдать машину игроку
+# ---------------------------------------------------------------- Выдать поезд игроку
 @router.callback_query(F.data == "admin:givecar")
 async def admin_givecar_start(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
         await callback.answer()
         return
-    await callback.message.answer("🎁 Введите ID или username игрока, которому хотите выдать машину:")
+    await callback.message.answer("🎁 Введите ID или username игрока, которому хотите выдать поезд:")
     await state.set_state(GiveCarStates.waiting_player)
     await callback.answer()
 
@@ -1000,7 +1000,7 @@ async def admin_givecar_player(message: Message, state: FSMContext):
     await state.set_state(GiveCarStates.waiting_car)
     await message.answer(
         f"👤 Игрок: {player['username'] or player['tg_id']}\n\n"
-        f"🚗 Теперь введите car_id машины (посмотреть список — «📋 Каталог машин по редкости»):"
+        f"🚂 Теперь введите car_id поезда (посмотреть список — «📋 Каталог поездов по редкости»):"
     )
 
 
@@ -1017,7 +1017,7 @@ async def admin_givecar_car(message: Message, state: FSMContext, bot: Bot):
     cur = await conn.execute("SELECT car_id, name, brand FROM cars WHERE car_id = ?", (car_id,))
     car = await cur.fetchone()
     if not car:
-        await message.answer("⚠️ Машина с таким car_id не найдена.")
+        await message.answer("⚠️ Поезд с таким car_id не найден.")
         return
     data = await state.get_data()
     await state.clear()
@@ -1084,15 +1084,15 @@ async def admin_givecurrency_amount(message: Message, state: FSMContext, bot: Bo
     await message.answer(result)
 
 
-# ---------------------------------------------------------------- Удалить машину из каталога
+# ---------------------------------------------------------------- Удалить поезд из каталога
 @router.callback_query(F.data == "admin:delcar")
 async def admin_delcar_start(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
         await callback.answer()
         return
     await callback.message.answer(
-        "🗑 Введите car_id машины, которую нужно ПОЛНОСТЬЮ удалить из бота "
-        "(она исчезнет из каталога и из гаражей всех игроков, у кого есть):"
+        "🗑 Введите car_id поезда, которую нужно ПОЛНОСТЬЮ удалить из бота "
+        "(она исчезнет из каталога и из депо всех игроков, у кого есть):"
     )
     await state.set_state(DeleteCarStates.waiting_car)
     await callback.answer()
@@ -1112,13 +1112,13 @@ async def admin_delcar_car(message: Message, state: FSMContext):
     cur = await conn.execute("SELECT car_id, name, brand, rarity FROM cars WHERE car_id = ?", (car_id,))
     car = await cur.fetchone()
     if not car:
-        await message.answer("⚠️ Машина с таким car_id не найдена.")
+        await message.answer("⚠️ Поезд с таким car_id не найден.")
         return
     cur = await conn.execute("SELECT COUNT(*) as cnt FROM user_garage WHERE car_id = ?", (car_id,))
     owners_count = (await cur.fetchone())["cnt"]
     await message.answer(
         f"⚠️ Вы уверены, что хотите удалить <b>{car['brand']} {car['name']}</b> ({car['rarity']}, #{car_id})?\n"
-        f"Она сейчас есть у {owners_count} игроков — у них она тоже пропадёт из гаража.\n"
+        f"Она сейчас есть у {owners_count} игроков — у них она тоже пропадёт из депо.\n"
         f"Это действие необратимо.",
         parse_mode="HTML",
         reply_markup=admin_delcar_confirm_kb(car_id),
@@ -1135,9 +1135,9 @@ async def admin_delcar_confirm(callback: CallbackQuery, bot: Bot):
     cur = await conn.execute("SELECT name, brand, rarity FROM cars WHERE car_id = ?", (car_id,))
     car = await cur.fetchone()
     if not car:
-        await callback.answer("Машина уже удалена", show_alert=True)
+        await callback.answer("Поезд уже удалён", show_alert=True)
         return
-    detail = f"удаление машины {car['brand']} {car['name']} ({car['rarity']}, #{car_id}) из каталога"
+    detail = f"удаление поезда {car['brand']} {car['name']} ({car['rarity']}, #{car_id}) из каталога"
     result = await _execute_or_request_approval(
         bot, callback.from_user.id, "delete_car", callback.from_user.id, detail, car_id=car_id,
     )
@@ -1151,15 +1151,15 @@ async def admin_delcar_cancel(callback: CallbackQuery):
     await callback.answer()
 
 
-# ---------------------------------------------------------------- Изменить фото машины
+# ---------------------------------------------------------------- Изменить фото поезда
 @router.callback_query(F.data == "admin:setphoto")
 async def admin_setphoto_start(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
         await callback.answer()
         return
     await callback.message.answer(
-        "🖼 Введите car_id машины, для которой хотите загрузить своё фото "
-        "(посмотреть список — «📋 Каталог машин по редкости»):"
+        "🖼 Введите car_id поезда, для которой хотите загрузить своё фото "
+        "(посмотреть список — «📋 Каталог поездов по редкости»):"
     )
     await state.set_state(SetPhotoStates.waiting_car)
     await callback.answer()
@@ -1178,7 +1178,7 @@ async def admin_setphoto_car(message: Message, state: FSMContext):
     cur = await conn.execute("SELECT car_id, name, brand FROM cars WHERE car_id = ?", (car_id,))
     car = await cur.fetchone()
     if not car:
-        await message.answer("⚠️ Машина с таким car_id не найдена.")
+        await message.answer("⚠️ Поезд с таким car_id не найден.")
         return
     await state.update_data(car_id=car_id, car_label=f"{car['brand']} {car['name']}")
     await state.set_state(SetPhotoStates.waiting_photo)
@@ -1323,7 +1323,7 @@ def _describe_reward(reward_type: str, reward_value: str) -> str:
         from handlers.containers import CONTAINER_LABELS
         return CONTAINER_LABELS.get(reward_value, reward_value)
     if reward_type == "car":
-        return f"машина (car_id {reward_value})"
+        return f"поезд (car_id {reward_value})"
     return f"{reward_type}: {reward_value}"
 
 
@@ -1353,7 +1353,7 @@ async def promo_create_type(callback: CallbackQuery, state: FSMContext):
     elif reward_type == "car":
         await state.set_state(PromoCreateStates.waiting_car_id)
         await callback.message.answer(
-            "🚗 Введите car_id машины (посмотреть список — «📋 Каталог машин по редкости»):"
+            "🚂 Введите car_id поезда (посмотреть список — «📋 Каталог поездов по редкости»):"
         )
     await callback.answer()
 
@@ -1399,7 +1399,7 @@ async def promo_create_car_id(message: Message, state: FSMContext):
     conn = await get_db()
     cur = await conn.execute("SELECT car_id FROM cars WHERE car_id = ?", (car_id,))
     if not await cur.fetchone():
-        await message.answer("⚠️ Машина с таким car_id не найдена.")
+        await message.answer("⚠️ Поезд с таким car_id не найден.")
         return
     data = await state.get_data()
     rewards = data.get("rewards", [])
@@ -1484,7 +1484,7 @@ async def promo_create_finalize(message: Message, state: FSMContext, bot: Bot):
 
 # ---------------------------------------------------------------- /addcar
 async def _addcar_prompt(message: Message, state: FSMContext):
-    await message.answer("🚗 Введите название модели машины:")
+    await message.answer("🚂 Введите название модели поезда:")
     await state.set_state(AddCarStates.name)
 
 
@@ -1498,7 +1498,7 @@ async def addcar_start(message: Message, state: FSMContext):
 @router.message(StateFilter(AddCarStates.name))
 async def addcar_name(message: Message, state: FSMContext):
     await state.update_data(name=message.text.strip())
-    await message.answer("🏭 Введите бренд машины:")
+    await message.answer("🏭 Введите бренд поезда:")
     await state.set_state(AddCarStates.brand)
 
 
@@ -1549,7 +1549,7 @@ async def addcar_value(message: Message, state: FSMContext):
         await message.answer("⚠️ Введите целое число.")
         return
     await state.update_data(base_value=int(message.text.strip()))
-    await message.answer("📸 Отправьте фото машины (станет image_url через file_id):")
+    await message.answer("📸 Отправьте фото поезда (станет image_url через file_id):")
     await state.set_state(AddCarStates.image)
 
 
@@ -1563,7 +1563,7 @@ async def addcar_image(message: Message, state: FSMContext, bot: Bot):
         "name": data["name"], "brand": data["brand"], "rarity": data["rarity"], "tier": data["tier"],
         "hourly_income": data["hourly_income"], "base_value": data["base_value"], "file_id": file_id,
     }
-    detail = f"новая машина {data['brand']} {data['name']} ({data['rarity']}, T{data['tier']})"
+    detail = f"новый поезд {data['brand']} {data['name']} ({data['rarity']}, T{data['tier']})"
     result = await _execute_or_request_approval(
         bot, message.from_user.id, "add_car", message.from_user.id, detail, payload=payload,
     )
@@ -1674,7 +1674,7 @@ async def give_car(message: Message, bot: Bot):
     cur = await conn.execute("SELECT name, brand FROM cars WHERE car_id = ?", (car_id,))
     car = await cur.fetchone()
     if not car:
-        await message.answer("⚠️ Машина с таким car_id не найдена.")
+        await message.answer("⚠️ Поезд с таким car_id не найден.")
         return
     detail = f"{car['brand']} {car['name']} (#{car_id}) игроку {target_id}"
     result = await _execute_or_request_approval(

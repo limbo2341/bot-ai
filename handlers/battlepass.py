@@ -71,7 +71,7 @@ async def _ensure_daily_quests(tg_id: int) -> None:
 
 async def _reward_for_level(level: int) -> str:
     if level % 10 == 0:
-        return "5 000 золота + случайная машина (Rare+)"
+        return "5 000 золота + случайный поезд (Rare+)"
     if level % 5 == 0:
         return "1 500 золота + бустер фарма"
     return "500 000 серебра + XP бустер"
@@ -79,7 +79,7 @@ async def _reward_for_level(level: int) -> str:
 
 async def _grant_level_reward(tg_id: int, level: int) -> str:
     """Выдаёт награду уровня. Золото/серебро — сразу на баланс, всё остальное
-    (машины, бустеры) — в «📦 Инвентарь», чтобы игрок мог использовать когда захочет."""
+    (поезда, бустеры) — в «📦 Инвентарь», чтобы игрок мог использовать когда захочет."""
     conn = await get_db()
     if level % 10 == 0:
         await conn.execute("UPDATE users SET gold = gold + 5000 WHERE tg_id = ?", (tg_id,))
@@ -90,7 +90,7 @@ async def _grant_level_reward(tg_id: int, level: int) -> str:
             (tg_id,),
         )
         await conn.commit()
-        return "🎁 +5 000 золота и жетон машины (Rare+) добавлены в инвентарь!"
+        return "🎁 +5 000 золота и жетон поезда (Rare+) добавлены в инвентарь!"
     if level % 5 == 0:
         await conn.execute("UPDATE users SET gold = gold + 1500 WHERE tg_id = ?", (tg_id,))
         await conn.execute(
@@ -358,7 +358,7 @@ async def _add_bp_xp(tg_id: int, xp_amount: int):
 
 
 async def increment_quest_progress(tg_id: int, quest_key: str, amount: int = 1):
-    """Вызывается из других модулей (гараж, казино, дуэли, контейнеры) для обновления
+    """Вызывается из других модулей (депо, казино, дуэли, контейнеры) для обновления
     прогресса заданий. Сама создаёт задания дня, если их ещё нет (игрок мог ни разу не
     открывать вкладку «Задания» сегодня) — иначе прогресс терялся."""
     await _ensure_daily_quests(tg_id)

@@ -79,8 +79,8 @@ async def _income_notifier_loop(bot: Bot) -> None:
                 try:
                     await bot.send_message(
                         row["tg_id"],
-                        "💰 Ваш доход с гаража накопился и готов к сбору! "
-                        "Загляните в «🚗 Гараж» → «💰 Собрать».",
+                        "💰 Ваш доход с депо накопился и готов к сбору! "
+                        "Загляните в «🚂 Депо» → «💰 Собрать».",
                     )
                 except TelegramForbiddenError:
                     await set_user_blocked(row["tg_id"], True)
@@ -134,7 +134,7 @@ async def _ad_campaign_loop(bot: Bot) -> None:
 
 
 async def _auction_expiry_loop(bot: Bot) -> None:
-    """Раз в минуту закрывает истёкшие лоты аукциона: машина уходит победителю
+    """Раз в минуту закрывает истёкшие лоты аукциона: поезд уходит победителю
     (деньги — продавцу), либо, если ставок не было, возвращается продавцу."""
     from db import get_db, has_garage_space
     while True:
@@ -148,7 +148,7 @@ async def _auction_expiry_loop(bot: Bot) -> None:
             for lot in expired:
                 cur2 = await conn.execute("SELECT name, brand FROM cars WHERE car_id = ?", (lot["car_id"],))
                 car = await cur2.fetchone()
-                car_label = f"{car['brand']} {car['name']}" if car else "машина"
+                car_label = f"{car['brand']} {car['name']}" if car else "поезд"
 
                 if lot["current_bidder_id"]:
                     winner_id = lot["current_bidder_id"]
@@ -162,7 +162,7 @@ async def _auction_expiry_loop(bot: Bot) -> None:
                                             (price, lot["seller_id"]))
                         await conn.commit()
                         try:
-                            await bot.send_message(winner_id, f"🏆 Вы выиграли аукцион! {car_label} добавлена в ваш гараж.")
+                            await bot.send_message(winner_id, f"🏆 Вы выиграли аукцион! {car_label} добавлена в ваше депо.")
                         except Exception:
                             pass
                         try:
@@ -173,7 +173,7 @@ async def _auction_expiry_loop(bot: Bot) -> None:
                         except Exception:
                             pass
                     else:
-                        # Гараж победителя переполнен — возвращаем деньги, машину продавцу.
+                        # Депо победителя переполнено — возвращаем деньги, поезд продавцу.
                         await conn.execute("UPDATE users SET silver = silver + ? WHERE tg_id = ?", (price, winner_id))
                         await conn.execute(
                             "INSERT INTO user_garage (tg_id, car_id, acquired_date) VALUES (?, ?, ?)",
@@ -183,14 +183,14 @@ async def _auction_expiry_loop(bot: Bot) -> None:
                         try:
                             await bot.send_message(
                                 winner_id,
-                                f"⚠️ Ваш гараж переполнен — выигрыш лота #{lot['auction_id']} отменён, деньги возвращены.",
+                                f"⚠️ Ваше депо переполнено — выигрыш лота #{lot['auction_id']} отменён, деньги возвращены.",
                             )
                         except Exception:
                             pass
                         try:
                             await bot.send_message(
                                 lot["seller_id"],
-                                f"⚠️ Победитель лота #{lot['auction_id']} не смог принять машину (гараж переполнен) — машина возвращена вам.",
+                                f"⚠️ Победитель лота #{lot['auction_id']} не смог принять поезд (депо переполнено) — поезд возвращён вам.",
                             )
                         except Exception:
                             pass
@@ -204,7 +204,7 @@ async def _auction_expiry_loop(bot: Bot) -> None:
                         await bot.send_message(
                             lot["seller_id"],
                             f"ℹ️ Лот #{lot['auction_id']} ({car_label}) не был продан — ставок не было. "
-                            f"Машина возвращена в гараж.",
+                            f"Поезд возвращён в депо.",
                         )
                     except Exception:
                         pass
@@ -299,9 +299,9 @@ async def main() -> None:
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     await bot.set_my_commands([
         BotCommand(command="start", description="Начать / открыть меню"),
-        BotCommand(command="garage", description="🚗 Гараж"),
+        BotCommand(command="garage", description="🚂 Депо"),
         BotCommand(command="collect", description="💰 Собрать доход"),
-        BotCommand(command="freecar", description="🎁 Бесплатная машина"),
+        BotCommand(command="freecar", description="🎁 Бесплатный поезд"),
         BotCommand(command="shop", description="🛒 Магазин"),
         BotCommand(command="inventory", description="📦 Инвентарь"),
         BotCommand(command="profile", description="👤 Профиль"),

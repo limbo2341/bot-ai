@@ -1,7 +1,7 @@
 """
 handlers/groupcmds.py — поддержка бота в группах:
   1) те же действия можно вызвать обычным словом без эмодзи и без нажатия
-     кнопки (например написать в чат "Гараж" или "Собрать");
+     кнопки (например написать в чат "Депо" или "Собрать");
   2) слэш-команды-алиасы для тех же разделов (/garage, /casino, ...);
   3) /pay — перевод серебра игроку, на сообщение которого вы ответили (reply).
 
@@ -20,16 +20,16 @@ from handlers import auctions, battlepass, casino, common, containers, duels, fr
 router = Router(name="groupcmds")
 
 # Текстовые алиасы (без эмодзи, регистр не важен) -> обработчик из соответствующего модуля.
-# "Ангар" добавлен как синоним "Гараж" (термин из другого популярного бота — для привычки игроков).
+# "Ангар" добавлен как синоним "Депо" (термин из другого популярного бота — для привычки игроков).
 ALIAS_HANDLERS = {
-    "гараж": garage.show_garage,
+    "депо": garage.show_garage,
     "ангар": garage.show_garage,
     "собрать": garage.claim_silver,
     "забрать": garage.claim_silver,
     "улучшения": garage.show_upgrades_menu,
-    "бесплатная машина": freecar.claim_free_car,
-    "бесплатную машину": freecar.claim_free_car,
-    "машина": freecar.claim_free_car,
+    "бесплатный поезд": freecar.claim_free_car,
+    "бесплатную поезд": freecar.claim_free_car,
+    "поезд": freecar.claim_free_car,
     "магазин": payments.show_shop,
     "инвентарь": common.show_inventory,
     "профиль": common.show_profile,

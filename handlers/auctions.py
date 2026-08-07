@@ -1,16 +1,16 @@
 """
-handlers/auctions.py — аукцион машин со ставками, доступен с 1 уровня профиля.
+handlers/auctions.py — аукцион поездов со ставками, доступен с 1 уровня профиля.
 
 Как это работает:
-- Продавец выставляет машину со стартовой ценой и сроком (24/48/72ч), платит
+- Продавец выставляет поезд со стартовой ценой и сроком (24/48/72ч), платит
   комиссию серебром за размещение (чем дольше висит лот — тем дороже).
 - Покупатели делают ставки. Ставка сразу списывается (эскроу): если тебя
   перебивают — деньги мгновенно возвращаются, и приходит уведомление, кто
   именно перебил и на сколько.
 - Если в последние 5 минут до конца кто-то поставил ставку — аукцион
   продлевается на 5 минут (защита от снайпинга в последнюю секунду).
-- По истечении времени машина уходит победителю (деньги — продавцу), либо,
-  если ставок не было, возвращается в гараж продавца. Комиссия за размещение
+- По истечении времени поезд уходит победителю (деньги — продавцу), либо,
+  если ставок не было, возвращается в депо продавца. Комиссия за размещение
   при этом не возвращается — таковы правила аукционного дома.
 """
 import datetime
@@ -88,7 +88,7 @@ async def _render_lot_detail(auction_id: int) -> tuple[str, InlineKeyboardMarkup
 
     text = (
         f"🔨 <b>Лот #{auction_id}</b>\n━━━━━━━━━━━━━━\n"
-        f"🚗 <b>{lot['brand']} {lot['name']}</b> ({lot['rarity']})\n"
+        f"🚂 <b>{lot['brand']} {lot['name']}</b> ({lot['rarity']})\n"
         f"💵 Доход: {lot['hourly_income']:,} серебра/час\n━━━━━━━━━━━━━━\n"
         f"💰 Текущая цена: <b>{current:,}</b> серебра\n"
         f"{leader_line}\n"
@@ -165,7 +165,7 @@ async def show_auction_menu(message: Message):
         return
     await message.answer(
         "🔨 <b>Аукцион</b>\n━━━━━━━━━━━━━━\n"
-        "Делайте ставки на машины других игроков или выставляйте свои — "
+        "Делайте ставки на поезда других игроков или выставляйте свои — "
         "лот уходит тому, кто предложит больше к моменту окончания времени.",
         parse_mode="HTML", reply_markup=auction_menu_kb(),
     )
@@ -200,7 +200,7 @@ async def list_auction_lots(callback: CallbackQuery):
         current = lot["current_bid"] or lot["start_price"]
         leader = "🔥 есть ставки" if lot["bid_count"] else "нет ставок — от старта"
         lines.append(
-            f"\n🚗 <b>{lot['brand']} {lot['name']}</b> ({lot['rarity']}) — #{lot['auction_id']}\n"
+            f"\n🚂 <b>{lot['brand']} {lot['name']}</b> ({lot['rarity']}) — #{lot['auction_id']}\n"
             f"💰 Текущая цена: <b>{current:,}</b> серебра ({leader})\n"
             f"{_time_left_str(lot['ends_at'])}".replace(",", " ")
         )
@@ -403,7 +403,7 @@ async def cancel_my_lot(callback: CallbackQuery, bot: Bot):
     await conn.execute("DELETE FROM auctions WHERE auction_id = ?", (auction_id,))
     await conn.commit()
     discard_lot_viewers(auction_id)
-    await callback.message.answer("✅ Лот снят с аукциона, машина возвращена в ваш гараж. "
+    await callback.message.answer("✅ Лот снят с аукциона, поезд возвращён в ваше депо. "
                                    "Комиссия за размещение не возвращается.")
     await callback.answer()
 
@@ -419,12 +419,12 @@ async def auction_create_start(callback: CallbackQuery, state: FSMContext):
     )
     cars = await cur.fetchall()
     if not cars:
-        await callback.answer("В гараже нет машин для продажи", show_alert=True)
+        await callback.answer("В депо нет поездов для продажи", show_alert=True)
         return
 
     rows = [[InlineKeyboardButton(text=f"{c['brand']} {c['name']}", callback_data=f"auc:pick:{c['entry_id']}")]
              for c in cars]
-    await callback.message.answer("🚗 Выберите машину для выставления на аукцион:",
+    await callback.message.answer("🚂 Выберите поезд для выставления на аукцион:",
                                    reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
     await state.set_state(AuctionStates.choose_car)
     await callback.answer()
@@ -470,7 +470,7 @@ async def auction_finalize(callback: CallbackQuery, state: FSMContext):
     cur = await conn.execute("SELECT car_id FROM user_garage WHERE id = ? AND tg_id = ?", (entry_id, tg_id))
     entry = await cur.fetchone()
     if not entry:
-        await callback.message.answer("⚠️ Машина не найдена в гараже.")
+        await callback.message.answer("⚠️ Поезд не найден в депо.")
         await state.clear()
         await callback.answer()
         return

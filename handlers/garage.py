@@ -1,5 +1,5 @@
 """
-handlers/garage.py — фарм серебра, список гаража, продажа машин,
+handlers/garage.py — фарм серебра, список депо, продажа поездов,
 улучшения фарма/ангара/часов накопления.
 """
 import datetime
@@ -23,7 +23,7 @@ from config import (
 router = Router(name="garage")
 
 PAGE_SIZE = 8
-_sell_selection: dict[int, set] = {}  # tg_id -> set(entry_id) — временный выбор машин на продажу
+_sell_selection: dict[int, set] = {}  # tg_id -> set(entry_id) — временный выбор поездов на продажу
 
 
 def _current_cooldown_seconds(cooldown_reduction_level: int) -> int:
@@ -33,8 +33,8 @@ def _current_cooldown_seconds(cooldown_reduction_level: int) -> int:
     )
 
 
-# ---------------------------------------------------------------- Гараж
-@router.message(F.text == "🚗 Гараж")
+# ---------------------------------------------------------------- Депо
+@router.message(F.text == "🚂 Депо")
 async def show_garage(message: Message):
     await _render_garage_page(message, message.from_user.id, page=1)
 
@@ -57,7 +57,7 @@ async def _render_garage_page(target: Message, tg_id: int, page: int, edit: bool
     rows = await cur.fetchall()
 
     if total == 0:
-        await target.answer("🚗 Ваш гараж пуст. Откройте контейнеры или купите машину в магазине!")
+        await target.answer("🚂 Ваше депо пусто. Откройте контейнеры или купите поезд в магазине!")
         return
 
     cars = [(r["entry_id"], r["car_id"], r["name"], r["brand"], r["rarity"], r["tier"], r["hourly_income"])
@@ -69,8 +69,8 @@ async def _render_garage_page(target: Message, tg_id: int, page: int, edit: bool
     )
     total_income = int((await cur.fetchone())["income"])
     text = (
-        f"🚗 <b>Ваш гараж</b>\n━━━━━━━━━━━━━━\n"
-        f"Машин: {total} | Доход: {total_income:,} серебра/ч\n"
+        f"🚂 <b>Ваше депо</b>\n━━━━━━━━━━━━━━\n"
+        f"Поездов: {total} | Доход: {total_income:,} серебра/ч\n"
         f"Страница {page}/{total_pages}"
     ).replace(",", " ")
     kb = garage_list_kb(cars, page, total_pages, tg_id)
@@ -83,8 +83,8 @@ async def _render_garage_page(target: Message, tg_id: int, page: int, edit: bool
     await target.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
-NOT_YOUR_GARAGE_TEXT = ("🚫 Это не ваш гараж. В группе бот показывает каждому только его собственные машины — "
-                        "напишите «Гараж», чтобы открыть свой.")
+NOT_YOUR_GARAGE_TEXT = ("🚫 Это не ваше депо. В группе бот показывает каждому только его собственные поезда — "
+                        "напишите «Депо», чтобы открыть свой.")
 
 
 @router.callback_query(F.data.startswith("garage:page:"))
@@ -115,13 +115,13 @@ async def _render_sellmode_page(callback: CallbackQuery, owner_id: int, page: in
     )
     rows = await cur.fetchall()
     if total == 0:
-        await callback.message.answer("🚗 Ваш гараж пуст.")
+        await callback.message.answer("🚂 Ваше депо пусто.")
         return
 
     cars = [(r["entry_id"], r["car_id"], r["name"], r["brand"], r["rarity"], r["tier"], r["hourly_income"])
             for r in rows]
     selected = _sell_selection.setdefault(tg_id, set())
-    text = "🗑 <b>Режим продажи</b>\nОтметьте машины, которые хотите продать, затем нажмите «Продать выбранные»."
+    text = "🗑 <b>Режим продажи</b>\nОтметьте поезда, которые хотите продать, затем нажмите «Продать выбранные»."
     kb = garage_sellmode_kb(cars, selected, page, total_pages, owner_id)
     try:
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
@@ -189,7 +189,7 @@ async def garage_sellconfirm(callback: CallbackQuery):
     )
     rows = await cur.fetchall()
     if not rows:
-        await callback.answer("Эти машины уже не найдены в гараже", show_alert=True)
+        await callback.answer("Эти поезда уже не найдены в депо", show_alert=True)
         _sell_selection.pop(tg_id, None)
         return
 
@@ -204,7 +204,7 @@ async def garage_sellconfirm(callback: CallbackQuery):
     _sell_selection.pop(tg_id, None)
 
     await callback.message.answer(
-        f"💵 Продано {len(rows)} машин(ы) за {total_value:,} серебра.".replace(",", " ")
+        f"💵 Продано {len(rows)} поездов(ы) за {total_value:,} серебра.".replace(",", " ")
     )
     await callback.answer()
 
@@ -220,7 +220,7 @@ async def _render_car_detail(callback: CallbackQuery, owner_id: int, entry_id: i
     )
     car = await cur.fetchone()
     if not car:
-        await callback.answer("🚫 Машина не найдена.", show_alert=True)
+        await callback.answer("🚫 Поезд не найден.", show_alert=True)
         return
     emoji = RARITY_EMOJI.get(car["rarity"], "⚪")
     fav_note = "❤️ В избранном" if car["is_favorite"] else ""
@@ -270,7 +270,7 @@ async def garage_upgrade_car(callback: CallbackQuery):
     )
     car = await cur.fetchone()
     if not car:
-        await callback.answer("🚫 Машина не найдена.", show_alert=True)
+        await callback.answer("🚫 Поезд не найден.", show_alert=True)
         return
     if car["upgrade_level"] >= CAR_UPGRADE_MAX_LEVEL:
         await callback.answer("Уже максимальный уровень", show_alert=True)
@@ -308,7 +308,7 @@ async def garage_toggle_fav(callback: CallbackQuery):
                               (entry_id, owner_id))
     row = await cur.fetchone()
     if not row:
-        await callback.answer("🚫 Машина не найдена.", show_alert=True)
+        await callback.answer("🚫 Поезд не найден.", show_alert=True)
         return
     new_val = 0 if row["is_favorite"] else 1
     await conn.execute("UPDATE user_garage SET is_favorite = ? WHERE id = ?", (new_val, entry_id))
@@ -332,7 +332,7 @@ async def garage_sell_car(callback: CallbackQuery):
     )
     car = await cur.fetchone()
     if not car:
-        await callback.answer("🚫 Машина не найдена.", show_alert=True)
+        await callback.answer("🚫 Поезд не найден.", show_alert=True)
         return
     await conn.execute("DELETE FROM user_garage WHERE id = ?", (entry_id,))
     await conn.execute("UPDATE users SET silver = silver + ? WHERE tg_id = ?", (car["base_value"], tg_id))
@@ -364,7 +364,7 @@ async def claim_silver(message: Message):
     income = round((await cur.fetchone())["income"])
 
     if income == 0:
-        await message.answer("⚠️ У вас нет машин в гараже, приносящих доход.")
+        await message.answer("⚠️ У вас нет поездов в депо, приносящих доход.")
         return
 
     now = datetime.datetime.utcnow()
@@ -407,7 +407,7 @@ async def claim_silver(message: Message):
     time_str = f"{farmed_hours}ч {farmed_minutes}м" if farmed_hours else f"{farmed_minutes}м"
     capped_note = ""
     if elapsed_seconds / 3600 > u["max_farming_hours"]:
-        capped_note = f" (максимум для вашего гаража — {u['max_farming_hours']}ч, фармилось дольше)"
+        capped_note = f" (максимум для вашего депо — {u['max_farming_hours']}ч, фармилось дольше)"
 
     text = (
         f"💰 <b>Доход собран!</b>\n━━━━━━━━━━━━━━\n"
