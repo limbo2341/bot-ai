@@ -647,20 +647,17 @@ async def init_db() -> None:
 
 async def _reseed_train_names() -> None:
     """Один раз (и безопасно при каждом повторном запуске) переименовывает уже
-    существующие строки cars в актуальный ростер поездов по car_id — сам доход/цена
-    пересчитываются отдельно в _rebalance_car_income()."""
+    существующие строки cars в актуальный ростер поездов, сопоставляя по порядку
+    следования (а не по арифметике car_id — она бьётся, если раньше что-то удаляли
+    из каталога и в id образовались дыры). Доход/цена пересчитываются отдельно
+    в _rebalance_car_income()."""
     conn = await get_db()
     catalog = _build_car_catalog()
-    cur = await conn.execute("SELECT car_id FROM cars ORDER BY car_id LIMIT 1")
-    first = await cur.fetchone()
-    if not first:
-        return
-    start_id = first["car_id"]
-    for i, (name, brand, rarity, tier, _income, _value, image_url) in enumerate(catalog):
-        car_id = start_id + i
+    cur = await conn.execute("SELECT car_id FROM cars WHERE photo_is_custom = 0 ORDER BY car_id")
+    existing_ids = [r["car_id"] for r in await cur.fetchall()]
+    for car_id, (name, brand, rarity, tier, _income, _value, image_url) in zip(existing_ids, catalog):
         await conn.execute(
-            "UPDATE cars SET name = ?, brand = ?, rarity = ?, tier = ?, image_url = ? "
-            "WHERE car_id = ? AND photo_is_custom = 0",
+            "UPDATE cars SET name = ?, brand = ?, rarity = ?, tier = ?, image_url = ? WHERE car_id = ?",
             (name, brand, rarity, tier, image_url, car_id),
         )
     await conn.commit()
