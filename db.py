@@ -639,8 +639,11 @@ async def init_db() -> None:
     else:
         # БД уже была заполнена ДО перехода на поезда (например, старым каталогом машин) —
         # переименовываем существующие строки по car_id, чтобы не потерять ссылки на них
-        # из user_garage/auctions у игроков. Безопасно запускать при каждом старте.
-        await _reseed_train_names()
+        # из user_garage/auctions у игроков. Флаг в settings — чтобы это выполнилось один
+        # раз, а не при каждом перезапуске (иначе будем зря сбрасывать кэш фото в Telegram).
+        if not await get_setting("trains_reseed_v1_done"):
+            await _reseed_train_names()
+            await set_setting("trains_reseed_v1_done", "1")
 
     await _rebalance_car_income()
 
@@ -657,7 +660,8 @@ async def _reseed_train_names() -> None:
     existing_ids = [r["car_id"] for r in await cur.fetchall()]
     for car_id, (name, brand, rarity, tier, _income, _value, image_url) in zip(existing_ids, catalog):
         await conn.execute(
-            "UPDATE cars SET name = ?, brand = ?, rarity = ?, tier = ?, image_url = ? WHERE car_id = ?",
+            "UPDATE cars SET name = ?, brand = ?, rarity = ?, tier = ?, image_url = ?, telegram_file_id = NULL "
+            "WHERE car_id = ?",
             (name, brand, rarity, tier, image_url, car_id),
         )
     await conn.commit()
