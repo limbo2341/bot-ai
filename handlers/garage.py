@@ -18,6 +18,7 @@ from config import (
     STORAGE_UPGRADE_COSTS, GARAGE_SLOT_PRICE_SILVER, RARITY_EMOJI,
     CLAN_MAX_LEVEL, CLAN_INCOME_BONUS_PER_LEVEL,
     CAR_UPGRADE_MAX_LEVEL, CAR_UPGRADE_INCOME_PER_LEVEL, CAR_UPGRADE_COST_PER_INCOME,
+    NIGHT_EXPRESS_START_HOUR, NIGHT_EXPRESS_END_HOUR, NIGHT_EXPRESS_BONUS,
 )
 
 router = Router(name="garage")
@@ -390,7 +391,12 @@ async def claim_silver(message: Message):
             clan_bonus_pct = min(clan_row["clan_level"], CLAN_MAX_LEVEL) * CLAN_INCOME_BONUS_PER_LEVEL
 
     premium_bonus_pct = PREMIUM_INCOME_BONUS if await is_user_premium(tg_id) else 0.0
-    earned = int(earned * (1 + clan_bonus_pct + premium_bonus_pct))
+
+    current_hour = datetime.datetime.utcnow().hour
+    is_night = NIGHT_EXPRESS_START_HOUR <= current_hour < NIGHT_EXPRESS_END_HOUR
+    night_bonus_pct = NIGHT_EXPRESS_BONUS if is_night else 0.0
+
+    earned = int(earned * (1 + clan_bonus_pct + premium_bonus_pct + night_bonus_pct))
 
     await conn.execute(
         "UPDATE users SET silver = silver + ?, last_claim_at = ? WHERE tg_id = ?",
@@ -421,6 +427,8 @@ async def claim_silver(message: Message):
         text += f"\n🏛 Бонус клана: +{clan_bonus_pct*100:.0f}%"
     if premium_bonus_pct > 0:
         text += f"\n💎 Бонус Premium BP: +{premium_bonus_pct*100:.0f}%"
+    if night_bonus_pct > 0:
+        text += f"\n🌙 Ночной экспресс: +{night_bonus_pct*100:.0f}%!"
     if leveled_up:
         text += f"\n\n🆙 <b>Новый уровень профиля: {new_level}!</b>"
     await message.answer(text, parse_mode="HTML")

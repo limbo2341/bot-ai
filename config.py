@@ -142,6 +142,12 @@ REFERRAL_GOLD_TIER1 = (3, 30)      # (рефералов, золота) — пр
 REFERRAL_GOLD_TIER2 = (5, 60)
 CLAN_LEVELUP_GOLD = 15             # золото каждому участнику клана при повышении уровня клана
 
+# ---- 🌙 Ночной экспресс: бонус к доходу с депо в ночные часы (по UTC) — награда
+# за захаживание в бота и ночью, не только днём.
+NIGHT_EXPRESS_START_HOUR = 0
+NIGHT_EXPRESS_END_HOUR = 6
+NIGHT_EXPRESS_BONUS = 0.25
+
 # ---- Доп. плюшки Premium BP в боевом пропуске ----
 PREMIUM_BP_XP_BOOST = 0.25         # +25% к получаемому XP боевого пропуска
 PREMIUM_BP_LEVEL_DISCOUNT = 0.20   # скидка 20% на покупку уровней за золото
