@@ -32,10 +32,12 @@ RACE_STAGES = [
 async def show_duel_menu(message: Message):
     await message.answer(
         (
-            "⚔️ <b>Дуэли</b>\n━━━━━━━━━━━━━━\n"
-            f"Соберите состав из до {MAX_SQUAD_SIZE} поездов и найдите соперника.\n"
+            "⚔️ <b>ДУЭЛИ</b>\n━━━━━━━━━━━━━━\n"
+            f"🚂 Состав: до {MAX_SQUAD_SIZE} поездов\n"
             f"💰 Ставка за бой: {DUEL_STAKE_SILVER:,} серебра\n"
-            f"⚡ Мощь = сумма (доход × множитель редкости) ± 15%"
+            f"⚡ Мощь = сумма (доход × множитель редкости) ± 15%\n"
+            f"━━━━━━━━━━━━━━\n"
+            f"Соберите состав и найдите соперника!"
         ).replace(",", " "),
         parse_mode="HTML", reply_markup=duel_menu_kb(),
     )
@@ -45,10 +47,12 @@ async def show_duel_menu(message: Message):
 async def duel_back(callback: CallbackQuery):
     await callback.message.answer(
         (
-            "⚔️ <b>Дуэли</b>\n━━━━━━━━━━━━━━\n"
-            f"Соберите состав из до {MAX_SQUAD_SIZE} поездов и найдите соперника.\n"
+            "⚔️ <b>ДУЭЛИ</b>\n━━━━━━━━━━━━━━\n"
+            f"🚂 Состав: до {MAX_SQUAD_SIZE} поездов\n"
             f"💰 Ставка за бой: {DUEL_STAKE_SILVER:,} серебра\n"
-            f"⚡ Мощь = сумма (доход × множитель редкости) ± 15%"
+            f"⚡ Мощь = сумма (доход × множитель редкости) ± 15%\n"
+            f"━━━━━━━━━━━━━━\n"
+            f"Соберите состав и найдите соперника!"
         ).replace(",", " "),
         parse_mode="HTML", reply_markup=duel_menu_kb(),
     )
@@ -123,6 +127,31 @@ async def save_squad(callback: CallbackQuery):
     await callback.answer()
 
 
+async def calculate_power_auto(tg_id: int) -> float:
+    """Считает мощь по ЛУЧШИМ поездам игрока автоматически (без ручного набора
+    состава) — используется для дуэлей-вызовов из групп по реплаю."""
+    conn = await get_db()
+    cur = await conn.execute(
+        """SELECT c.hourly_income, c.rarity, g.upgrade_level FROM user_garage g
+           JOIN cars c ON c.car_id = g.car_id WHERE g.tg_id = ?""",
+        (tg_id,),
+    )
+    rows = await cur.fetchall()
+    if not rows:
+        return 0.0
+    scored = sorted(
+        rows,
+        key=lambda r: r["hourly_income"] * (1 + r["upgrade_level"] * 0.10) * RARITY_MULTIPLIERS.get(r["rarity"], 1.0),
+        reverse=True,
+    )[:MAX_SQUAD_SIZE]
+    total = sum(
+        r["hourly_income"] * (1 + r["upgrade_level"] * 0.10) * RARITY_MULTIPLIERS.get(r["rarity"], 1.0)
+        for r in scored
+    )
+    variance = random.uniform(-0.15, 0.15)
+    return total * (1 + variance)
+
+
 async def _calculate_power(tg_id: int, entry_ids: set) -> float:
     if not entry_ids:
         return 0.0
@@ -195,19 +224,32 @@ async def _resolve_duel_later(bot: Bot, duel_id: int, tg_id: int, squad: set, op
     await increment_quest_progress(winner_id, "play_duels", 1)
     await increment_quest_progress(loser_id, "play_duels", 1)
 
-    result_text = (
-        f"🏁 <b>Гонка финиширована!</b>\n━━━━━━━━━━━━━━\n"
-        f"Ваша мощь: {my_power:,.0f}\nМощь соперника: {opp_power:,.0f}\n━━━━━━━━━━━━━━\n"
-        f"{{result}}\n💰 Ставка: {actual_stake:,} серебра".replace(",", " ")
-    )
+    total_power = my_power + opp_power
+    my_share = round((my_power / total_power) * 10) if total_power > 0 else 5
+    my_share = min(10, max(0, my_share))
+
+    def _render_result(bot=None, viewer_power=0.0, rival_power=0.0, viewer_share=5, won=False,
+                        extra="", stake=0):
+        bar = "🟦" * viewer_share + "🟥" * (10 - viewer_share)
+        outcome = "🏆 <b>ПОБЕДА!</b>" if won else "💀 <b>Поражение.</b>"
+        return (
+            f"🏁 <b>ГОНКА ФИНИШИРОВАНА!</b>\n━━━━━━━━━━━━━━\n"
+            f"🟦 Вы:       <b>{viewer_power:,.0f}</b>\n"
+            f"🟥 Соперник: <b>{rival_power:,.0f}</b>\n"
+            f"{bar}\n"
+            f"━━━━━━━━━━━━━━\n"
+            f"{outcome}\n💰 Ставка: {stake:,} серебра{extra}".replace(",", " ")
+        )
+
     winner_extra = f"\n🥇 Серия побед: {win_streak}"
     if streak_gold:
         winner_extra += f" — бонус +{streak_gold} золота! 🔥"
     try:
         await bot.send_message(
             tg_id,
-            result_text.format(result="🏆 Вы победили!" if winner_id == tg_id else "💀 Вы проиграли.")
-            + (winner_extra if winner_id == tg_id else ""),
+            _render_result(viewer_power=my_power, rival_power=opp_power, viewer_share=my_share,
+                            won=(winner_id == tg_id), extra=(winner_extra if winner_id == tg_id else ""),
+                            stake=actual_stake),
             parse_mode="HTML",
         )
     except Exception:
@@ -215,8 +257,9 @@ async def _resolve_duel_later(bot: Bot, duel_id: int, tg_id: int, squad: set, op
     try:
         await bot.send_message(
             opponent_id,
-            result_text.format(result="🏆 Вы победили!" if winner_id == opponent_id else "💀 Вы проиграли.")
-            + (winner_extra if winner_id == opponent_id else ""),
+            _render_result(viewer_power=opp_power, rival_power=my_power, viewer_share=10 - my_share,
+                            won=(winner_id == opponent_id), extra=(winner_extra if winner_id == opponent_id else ""),
+                            stake=actual_stake),
             parse_mode="HTML",
         )
     except Exception:

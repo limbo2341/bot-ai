@@ -173,7 +173,8 @@ CREATE TABLE IF NOT EXISTS users (
     income_notified_at TEXT,
     referral_gold_tier1_claimed INTEGER NOT NULL DEFAULT 0,
     referral_gold_tier2_claimed INTEGER NOT NULL DEFAULT 0,
-    lottery_last_reminder_round TEXT
+    lottery_last_reminder_round TEXT,
+    container_pity_counter INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS cars (
@@ -372,6 +373,15 @@ CREATE TABLE IF NOT EXISTS account_resets (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS group_duel_challenges (
+    challenge_id SERIAL PRIMARY KEY,
+    chat_id BIGINT NOT NULL,
+    challenger_id BIGINT NOT NULL,
+    challenged_id BIGINT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS lottery_tickets (
     tg_id BIGINT PRIMARY KEY REFERENCES users(tg_id) ON DELETE CASCADE,
     ticket_count INTEGER NOT NULL DEFAULT 0
@@ -413,6 +423,7 @@ MIGRATIONS = [
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_gold_tier1_claimed INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_gold_tier2_claimed INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS lottery_last_reminder_round TEXT",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS container_pity_counter INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE ad_campaign ADD COLUMN IF NOT EXISTS sent_count INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE auctions ADD COLUMN IF NOT EXISTS start_price BIGINT NOT NULL DEFAULT 0",
     "ALTER TABLE auctions ADD COLUMN IF NOT EXISTS current_bid BIGINT NOT NULL DEFAULT 0",
@@ -844,7 +855,7 @@ async def send_car_photo(target, car_id: int, image_url: str | None, telegram_fi
     1) если уже есть закэшированный telegram_file_id — используем его (быстро,
        не зависит от внешнего сервиса-заглушки);
     2) иначе пробуем image_url и, если Telegram успешно его принял, сохраняем
-       полученный file_id в базу для всех будущих показов этой поезда;
+       полученный file_id в базу для всех будущих показов этого поезда;
     3) если оба варианта не сработали — возвращаем False (вызывающий код
        должен показать текстовое сообщение как запасной вариант).
     target — объект с методом .answer_photo(...) (aiogram Message или CallbackQuery.message).

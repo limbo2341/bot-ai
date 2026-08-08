@@ -26,7 +26,7 @@ from db import get_db, has_garage_space, add_user_exp
 from keyboards import auction_menu_kb, auction_my_lots_kb, auction_duration_kb
 from config import (
     AUCTION_UNLOCK_LEVEL, AUCTION_DURATION_OPTIONS, AUCTION_MIN_BID_STEP, AUCTION_MIN_BID_STEP_PERCENT,
-    AUCTION_ANTISNIPE_WINDOW_MIN, AUCTION_ANTISNIPE_EXTEND_MIN,
+    AUCTION_ANTISNIPE_WINDOW_MIN, AUCTION_ANTISNIPE_EXTEND_MIN, RARITY_EMOJI,
 )
 
 router = Router(name="auctions")
@@ -83,18 +83,22 @@ async def _render_lot_detail(auction_id: int) -> tuple[str, InlineKeyboardMarkup
         return None
 
     current = lot["current_bid"] or lot["start_price"]
-    leader_line = f"🔥 Ставок сделано: {lot['bid_count']}" if lot["bid_count"] else "Ставок пока не было"
+    leader_line = f"🔥 Ставок сделано: <b>{lot['bid_count']}</b>" if lot["bid_count"] else "🆕 Ставок пока не было — станьте первым"
     min_bid = _min_next_bid(current) if lot["bid_count"] else lot["start_price"]
+    emoji = RARITY_EMOJI.get(lot["rarity"], "⚪")
 
     text = (
-        f"🔨 <b>Лот #{auction_id}</b>\n━━━━━━━━━━━━━━\n"
-        f"🚂 <b>{lot['brand']} {lot['name']}</b> ({lot['rarity']})\n"
-        f"💵 Доход: {lot['hourly_income']:,} серебра/час\n━━━━━━━━━━━━━━\n"
-        f"💰 Текущая цена: <b>{current:,}</b> серебра\n"
+        f"🔨 <b>ЛОТ #{auction_id}</b>\n━━━━━━━━━━━━━━\n"
+        f"{emoji} <b>{lot['brand']} {lot['name']}</b>\n"
+        f"Редкость: <b>{lot['rarity']}</b>\n"
+        f"💵 Доход: {lot['hourly_income']:,} серебра/час\n"
+        f"━━━━━━━━━━━━━━\n"
+        f"💰 Текущая цена: <b>{current:,} серебра</b>\n"
         f"{leader_line}\n"
         f"{_time_left_str(lot['ends_at'])}\n"
-        f"➡️ Минимальная следующая ставка: <b>{min_bid:,}</b>\n"
-        f"━━━━━━━━━━━━━━\n🔴 Обновляется в реальном времени, пока лот открыт"
+        f"━━━━━━━━━━━━━━\n"
+        f"➡️ Минимальная ставка: <b>{min_bid:,} серебра</b>\n"
+        f"🔴 <i>Обновляется в реальном времени, пока лот открыт</i>"
     ).replace(",", " ")
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -164,7 +168,7 @@ async def show_auction_menu(message: Message):
         await message.answer(f"🔒 Аукцион открывается с {AUCTION_UNLOCK_LEVEL} уровня профиля.")
         return
     await message.answer(
-        "🔨 <b>Аукцион</b>\n━━━━━━━━━━━━━━\n"
+        "🔨 <b>АУКЦИОН</b>\n━━━━━━━━━━━━━━\n"
         "Делайте ставки на поезда других игроков или выставляйте свои — "
         "лот уходит тому, кто предложит больше к моменту окончания времени.",
         parse_mode="HTML", reply_markup=auction_menu_kb(),
@@ -195,16 +199,17 @@ async def list_auction_lots(callback: CallbackQuery):
         return
 
     rows = []
-    lines = [f"📋 <b>Активные лоты</b> (стр. {page}/{total_pages})\n━━━━━━━━━━━━━━"]
+    lines = [f"🔨 <b>АУКЦИОН</b> · лоты (стр. {page}/{total_pages})\n━━━━━━━━━━━━━━"]
     for lot in lots:
         current = lot["current_bid"] or lot["start_price"]
-        leader = "🔥 есть ставки" if lot["bid_count"] else "нет ставок — от старта"
+        leader = "🔥 в торге" if lot["bid_count"] else "🆕 стартовая цена"
+        emoji = RARITY_EMOJI.get(lot["rarity"], "⚪")
         lines.append(
-            f"\n🚂 <b>{lot['brand']} {lot['name']}</b> ({lot['rarity']}) — #{lot['auction_id']}\n"
-            f"💰 Текущая цена: <b>{current:,}</b> серебра ({leader})\n"
-            f"{_time_left_str(lot['ends_at'])}".replace(",", " ")
+            f"\n{emoji} <b>{lot['brand']} {lot['name']}</b>  ·  #{lot['auction_id']}\n"
+            f"💰 <b>{current:,}</b> серебра  ·  {leader}\n"
+            f"{_time_left_str(lot['ends_at'])}\n┈┈┈┈┈┈┈┈┈┈┈┈┈┈".replace(",", " ")
         )
-        rows.append([InlineKeyboardButton(text=f"🔍 Лот #{lot['auction_id']} — {current:,} серебра".replace(",", " "),
+        rows.append([InlineKeyboardButton(text=f"🔍 #{lot['auction_id']} · {lot['brand']} {lot['name']} — {current:,}".replace(",", " "),
                                            callback_data=f"auc:view:{lot['auction_id']}")])
     nav = []
     if page > 1:

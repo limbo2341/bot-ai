@@ -128,7 +128,7 @@ def upgrades_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="⚡ Улучшение фарма", callback_data="upg:farm", style=ButtonStyle.PRIMARY)],
         [InlineKeyboardButton(text="🏠 Улучшение ангара", callback_data="upg:garage", style=ButtonStyle.PRIMARY)],
         [InlineKeyboardButton(text="⏳ Улучшение часов фарма", callback_data="upg:hours", style=ButtonStyle.PRIMARY)],
-        [InlineKeyboardButton(text="🎁 Ускорение бесплатной поезда", callback_data="upg:freecar", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(text="🎁 Ускорение бесплатного поезда", callback_data="upg:freecar", style=ButtonStyle.PRIMARY)],
         [InlineKeyboardButton(text=f"{BACK} в меню", callback_data="nav:economy", style=ButtonStyle.PRIMARY)],
     ])
 

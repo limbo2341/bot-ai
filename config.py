@@ -148,6 +148,12 @@ NIGHT_EXPRESS_START_HOUR = 0
 NIGHT_EXPRESS_END_HOUR = 6
 NIGHT_EXPRESS_BONUS = 0.25
 
+# ---- 🎯 Система "жалости" (pity) для контейнеров: если долго не везёт, следующий
+# гарантированно даст Epic или выше — стандартная и любимая механика гача-игр.
+CONTAINER_PITY_THRESHOLD = 15
+RARITY_RANK = {"Common": 0, "Uncommon": 1, "Rare": 2, "Epic": 3, "Legendary": 4, "Ultra-Rare": 5, "Secret": 6}
+CONTAINER_PITY_MIN_RANK = RARITY_RANK["Epic"]
+
 # ---- Доп. плюшки Premium BP в боевом пропуске ----
 PREMIUM_BP_XP_BOOST = 0.25         # +25% к получаемому XP боевого пропуска
 PREMIUM_BP_LEVEL_DISCOUNT = 0.20   # скидка 20% на покупку уровней за золото
@@ -183,9 +189,9 @@ FREE_CAR_UPGRADE_COSTS = {
     4: (90_000, 2),
     5: (150_000, 3),
 }
-# Шансы редкости для бесплатной поезда: от Common до Legendary включительно.
+# Шансы редкости для бесплатного поезда: от Common до Legendary включительно.
 # Ultra-Rare и Secret остаются эксклюзивом премиум-контейнера (не выпадают отсюда).
-FREE_CAR_ODDS = {"Common": 32, "Uncommon": 30, "Rare": 22, "Epic": 13.5, "Legendary": 2.5}
+FREE_CAR_ODDS = {"Common": 25, "Uncommon": 27, "Rare": 22, "Epic": 17, "Legendary": 8, "Secret": 1}
 
 # ==== Реферальная система ====
 REFERRAL_THRESHOLD = 10             # сколько друзей нужно пригласить

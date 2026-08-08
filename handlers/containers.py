@@ -16,7 +16,7 @@ from keyboards import container_menu_kb, premium_container_qty_kb
 from config import (
     RARITY_EMOJI, STARS_CURRENCY, PREMIUM_CONTAINER_BASE_PRICE, PREMIUM_CONTAINER_QTY_OPTIONS,
     PREMIUM_CONTAINER_GOLD_PRICE,
-    PREMIUM_CONTAINER_DISCOUNT,
+    PREMIUM_CONTAINER_DISCOUNT, CONTAINER_PITY_THRESHOLD, RARITY_RANK, CONTAINER_PITY_MIN_RANK,
 )
 
 router = Router(name="containers")
@@ -49,20 +49,32 @@ async def _premium_price_for_qty(qty: int, tg_id: int | None = None) -> int:
 
 @router.message(F.text == "📥 Контейнеры")
 async def show_containers_menu(message: Message):
+    conn = await get_db()
+    cur = await conn.execute("SELECT container_pity_counter FROM users WHERE tg_id = ?", (message.from_user.id,))
+    row = await cur.fetchone()
+    pity = row["container_pity_counter"] if row else 0
+    left = max(0, CONTAINER_PITY_THRESHOLD - pity)
     await message.answer(
         "📥 <b>Контейнеры</b>\n━━━━━━━━━━━━━━\n"
-        "Откройте контейнер и получите случайную поезд! Чем реже контейнер — "
-        "тем выше шансы на топовые поезда.",
+        "Откройте контейнер и получите случайный поезд! Чем реже контейнер — "
+        "тем выше шансы на топовые поезда.\n"
+        f"🎯 До гарантии Epic+: {left} открытий",
         parse_mode="HTML", reply_markup=container_menu_kb(),
     )
 
 
 @router.callback_query(F.data == "cont:back")
 async def containers_back(callback: CallbackQuery):
+    conn = await get_db()
+    cur = await conn.execute("SELECT container_pity_counter FROM users WHERE tg_id = ?", (callback.from_user.id,))
+    row = await cur.fetchone()
+    pity = row["container_pity_counter"] if row else 0
+    left = max(0, CONTAINER_PITY_THRESHOLD - pity)
     await callback.message.answer(
         "📥 <b>Контейнеры</b>\n━━━━━━━━━━━━━━\n"
-        "Откройте контейнер и получите случайную поезд! Чем реже контейнер — "
-        "тем выше шансы на топовые поезда.",
+        "Откройте контейнер и получите случайный поезд! Чем реже контейнер — "
+        "тем выше шансы на топовые поезда.\n"
+        f"🎯 До гарантии Epic+: {left} открытий",
         parse_mode="HTML", reply_markup=container_menu_kb(),
     )
     await callback.answer()
@@ -262,12 +274,30 @@ async def animate_container_opening(message: Message):
 
 
 async def _open_container(tg_id: int, container_key: str):
+    conn = await get_db()
     odds = CONTAINER_ODDS[container_key]
     rarities = list(odds.keys())
     weights = list(odds.values())
     chosen_rarity = random.choices(rarities, weights=weights, k=1)[0]
 
-    conn = await get_db()
+    cur = await conn.execute("SELECT container_pity_counter FROM users WHERE tg_id = ?", (tg_id,))
+    pity_row = await cur.fetchone()
+    pity_counter = pity_row["container_pity_counter"] if pity_row else 0
+    pity_triggered = False
+
+    if RARITY_RANK.get(chosen_rarity, 0) < CONTAINER_PITY_MIN_RANK and pity_counter + 1 >= CONTAINER_PITY_THRESHOLD:
+        # "Жалостливый" ролл: пересчитываем строго среди Epic и выше, доступных в этом
+        # контейнере (у премиум/донат-контейнеров они почти всегда есть).
+        high_rarities = [r for r in rarities if RARITY_RANK.get(r, 0) >= CONTAINER_PITY_MIN_RANK]
+        if high_rarities:
+            high_weights = [odds[r] for r in high_rarities]
+            chosen_rarity = random.choices(high_rarities, weights=high_weights, k=1)[0]
+            pity_triggered = True
+
+    new_pity = 0 if RARITY_RANK.get(chosen_rarity, 0) >= CONTAINER_PITY_MIN_RANK else pity_counter + 1
+    await conn.execute("UPDATE users SET container_pity_counter = ? WHERE tg_id = ?", (new_pity, tg_id))
+    await conn.commit()
+
     cur = await conn.execute(
         "SELECT car_id, name, brand, tier, image_url, telegram_file_id FROM cars WHERE rarity = ? ORDER BY RANDOM() LIMIT 1",
         (chosen_rarity,),
@@ -297,8 +327,9 @@ async def _open_container(tg_id: int, container_key: str):
     await increment_quest_progress(tg_id, "open_container", 1)
 
     emoji = RARITY_EMOJI.get(chosen_rarity, "⚪")
+    pity_note = "\n\n🎯 Система защиты от невезения сработала — гарантия сыграла!" if pity_triggered else ""
     text = (f"📦 <b>Контейнер открыт!</b>\n\n{emoji} Вы получили: <b>{car['brand']} {car['name']}</b> "
-            f"(Тир {car['tier']}, {chosen_rarity})")
+            f"(Тир {car['tier']}, {chosen_rarity}){pity_note}")
     return car, text
 
 

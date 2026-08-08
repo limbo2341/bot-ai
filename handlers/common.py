@@ -330,7 +330,7 @@ async def _check_referral_milestone(bot, referrer_id: int) -> None:
     try:
         await bot.send_message(
             referrer_id,
-            f"🎉 Вы пригласили {REFERRAL_THRESHOLD} друзей и получили секретную поезд: "
+            f"🎉 Вы пригласили {REFERRAL_THRESHOLD} друзей и получили секретный поезд: "
             f"<b>{car['brand']} {car['name']}</b>!",
             parse_mode="HTML",
         )
@@ -587,7 +587,7 @@ async def _apply_item_effect(tg_id: int, item_type: str, item_name: str) -> tupl
             (tg_id, car["car_id"], datetime.datetime.utcnow().isoformat()),
         )
         await conn.commit()
-        return f"🎉 Вы получили новую поезд: <b>{car['brand']} {car['name']}</b>!", True
+        return f"🎉 Вы получили новый поезд: <b>{car['brand']} {car['name']}</b>!", True
 
     if item_type == "booster":
         if item_name == "XP бустер":

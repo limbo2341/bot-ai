@@ -9,10 +9,11 @@ handlers/groupcmds.py — поддержка бота в группах:
 текст, ожидаемый другими хендлерами в состояниях FSM (ввод сумм, названий и т.д.).
 """
 import inspect
+import datetime
 from aiogram import Router, F, Bot
 from aiogram.filters import Command, CommandObject, StateFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 from db import get_db
 from handlers import auctions, battlepass, casino, common, containers, duels, freecar, garage, payments, bonuses
@@ -28,7 +29,7 @@ ALIAS_HANDLERS = {
     "забрать": garage.claim_silver,
     "улучшения": garage.show_upgrades_menu,
     "бесплатный поезд": freecar.claim_free_car,
-    "бесплатную поезд": freecar.claim_free_car,
+    "бесплатный поезд": freecar.claim_free_car,
     "поезд": freecar.claim_free_car,
     "магазин": payments.show_shop,
     "инвентарь": common.show_inventory,
@@ -94,6 +95,140 @@ async def group_help(message: Message):
         "🚀 Открыть бота в личке: /start",
     ]
     await message.answer("\n".join(lines), parse_mode="HTML")
+
+
+@router.message(
+    F.chat.type.in_({"group", "supergroup"}),
+    F.reply_to_message,
+    F.text.func(lambda t: bool(t) and t.strip().lower() in ("дуэль", "дуель")),
+)
+async def group_duel_challenge(message: Message):
+    challenger = message.from_user
+    challenged = message.reply_to_message.from_user
+    if challenger.is_bot:
+        return
+    if not challenged or challenged.is_bot:
+        await message.reply("⚠️ Нельзя вызвать на дуэль бота.")
+        return
+    if challenged.id == challenger.id:
+        await message.reply("⚠️ Нельзя вызвать на дуэль самого себя.")
+        return
+
+    conn = await get_db()
+    cur = await conn.execute(
+        """INSERT INTO group_duel_challenges (chat_id, challenger_id, challenged_id, status, created_at)
+           VALUES (?, ?, ?, 'pending', ?) RETURNING challenge_id""",
+        (message.chat.id, challenger.id, challenged.id, datetime.datetime.utcnow().isoformat()),
+    )
+    row = await cur.fetchone()
+    challenge_id = row["challenge_id"]
+    await conn.commit()
+
+    challenger_name = f"@{challenger.username}" if challenger.username else challenger.full_name
+    challenged_name = f"@{challenged.username}" if challenged.username else challenged.full_name
+    await message.reply(
+        f"⚔️ {challenger_name} предлагает устроить дуэль {challenged_name}!\n"
+        f"🔥 Погнали? (принять может только {challenged_name})",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="✅ Принять", callback_data=f"gduel:accept:{challenge_id}"),
+            InlineKeyboardButton(text="❌ Отказаться", callback_data=f"gduel:decline:{challenge_id}"),
+        ]]),
+    )
+
+
+@router.callback_query(F.data.startswith("gduel:"))
+async def group_duel_response(callback: CallbackQuery, bot: Bot):
+    parts = callback.data.split(":")
+    action, challenge_id = parts[1], int(parts[2])
+
+    conn = await get_db()
+    cur = await conn.execute("SELECT * FROM group_duel_challenges WHERE challenge_id = ?", (challenge_id,))
+    challenge = await cur.fetchone()
+    if not challenge or challenge["status"] != "pending":
+        await callback.answer("Этот вызов уже неактуален", show_alert=True)
+        return
+    # Только тот, кого вызвали, может нажимать эти кнопки — остальным, включая
+    # самого вызывающего, бот вежливо отказывает без каких-либо действий.
+    if callback.from_user.id != challenge["challenged_id"]:
+        await callback.answer("🚫 Эта кнопка не для вас — вызов адресован другому игроку", show_alert=True)
+        return
+
+    if action == "decline":
+        await conn.execute("UPDATE group_duel_challenges SET status = 'declined' WHERE challenge_id = ?",
+                            (challenge_id,))
+        await conn.commit()
+        try:
+            await callback.message.edit_text("❌ Дуэль отклонена.")
+        except Exception:
+            pass
+        await callback.answer()
+        return
+
+    conn2 = await get_db()
+    cur = await conn2.execute("SELECT silver FROM users WHERE tg_id IN (?, ?)",
+                               (challenge["challenger_id"], challenge["challenged_id"]))
+    both = await cur.fetchall()
+    if len(both) < 2 or any(r["silver"] < duels.DUEL_STAKE_SILVER for r in both):
+        await callback.answer(f"У одного из игроков не хватает {duels.DUEL_STAKE_SILVER:,} серебра на ставку"
+                               .replace(",", " "), show_alert=True)
+        return
+
+    await conn2.execute("UPDATE group_duel_challenges SET status = 'accepted' WHERE challenge_id = ?",
+                         (challenge_id,))
+    await conn2.commit()
+    try:
+        await callback.message.edit_text("⚔️ Дуэль принята! Считаем мощь составов...")
+    except Exception:
+        pass
+    await callback.answer()
+
+    await _resolve_group_duel(bot, callback.message, challenge["challenger_id"], challenge["challenged_id"])
+
+
+async def _resolve_group_duel(bot: Bot, message: Message, challenger_id: int, challenged_id: int):
+    """Дуэль по вызову в группе — состав каждый использует свой лучший автоматически
+    (без ручного набора), результат публикуется прямо в группе."""
+    from handlers.battlepass import increment_quest_progress
+    from db import add_user_exp
+
+    power_a = await duels.calculate_power_auto(challenger_id)
+    power_b = await duels.calculate_power_auto(challenged_id)
+    winner_id = challenger_id if power_a >= power_b else challenged_id
+    loser_id = challenged_id if winner_id == challenger_id else challenger_id
+
+    conn = await get_db()
+    cur = await conn.execute("SELECT silver FROM users WHERE tg_id = ?", (loser_id,))
+    loser_silver = (await cur.fetchone())["silver"]
+    stake = min(duels.DUEL_STAKE_SILVER, loser_silver)
+
+    await conn.execute("UPDATE users SET silver = silver + ? WHERE tg_id = ?", (stake, winner_id))
+    await conn.execute("UPDATE users SET silver = GREATEST(silver - ?, 0) WHERE tg_id = ?", (stake, loser_id))
+    await conn.commit()
+    await add_user_exp(winner_id, 150)
+    await add_user_exp(loser_id, 40)
+    await increment_quest_progress(winner_id, "play_duels", 1)
+    await increment_quest_progress(loser_id, "play_duels", 1)
+
+    total = power_a + power_b
+    a_share = round((power_a / total) * 10) if total > 0 else 5
+    bar = "🟦" * a_share + "🟥" * (10 - a_share)
+
+    winner_name = f"tg://user?id={winner_id}"
+    try:
+        winner_user = await bot.get_chat(winner_id)
+        winner_label = f"@{winner_user.username}" if winner_user.username else winner_user.full_name
+    except Exception:
+        winner_label = "Победитель"
+
+    await message.answer(
+        (
+            f"🏁 <b>ГОНКА ФИНИШИРОВАНА!</b>\n━━━━━━━━━━━━━━\n"
+            f"🟦 Игрок 1: <b>{power_a:,.0f}</b>\n🟥 Игрок 2: <b>{power_b:,.0f}</b>\n"
+            f"{bar}\n━━━━━━━━━━━━━━\n"
+            f"🏆 Победил: <b>{winner_label}</b>!\n💰 Забрал: {stake:,} серебра"
+        ).replace(",", " "),
+        parse_mode="HTML",
+    )
 
 
 @router.message(

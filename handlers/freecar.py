@@ -46,14 +46,14 @@ async def claim_free_car(message: Message):
             m, s = divmod(rem, 60)
             await message.answer(
                 f"⏳ Бесплатный поезд ещё не готов.\nОсталось: {h}ч {m}м {s}с.\n\n"
-                f"💡 Кулдаун можно сократить в разделе «⚙️ Улучшения» → «🎁 Ускорение бесплатной поезда»."
+                f"💡 Кулдаун можно сократить в разделе «⚙️ Улучшения» → «🎁 Ускорение бесплатного поезда»."
             )
             return
 
     if not await has_garage_space(tg_id):
         await message.answer(
             "🚫 Депо переполнено! Расширьте его в «⚙️ Улучшения» или продайте поезда — "
-            "кулдаун бесплатной поезда не потрачен, попробуйте снова после этого."
+            "кулдаун бесплатного поезда не потрачен, попробуйте снова после этого."
         )
         return
 
@@ -116,7 +116,7 @@ async def upg_freecar_menu(callback: CallbackQuery):
 
     if current_level >= FREE_CAR_MAX_UPGRADE_LEVEL:
         await callback.message.answer(
-            f"🎁 <b>Ускорение бесплатной поезда</b>\n━━━━━━━━━━━━━━\n"
+            f"🎁 <b>Ускорение бесплатного поезда</b>\n━━━━━━━━━━━━━━\n"
             f"🟩🟩🟩🟩🟩\nКулдаун: {h}ч {m}м (МАКСИМУМ {FREE_CAR_MAX_UPGRADE_LEVEL}/{FREE_CAR_MAX_UPGRADE_LEVEL})",
             parse_mode="HTML",
         )
@@ -128,7 +128,7 @@ async def upg_freecar_menu(callback: CallbackQuery):
     can_afford = u["silver"] >= cost_silver and u["gold"] >= cost_gold
     bar = "🟩" * current_level + "⬜️" * (FREE_CAR_MAX_UPGRADE_LEVEL - current_level)
     await callback.message.answer(
-        f"🎁 <b>Ускорение бесплатной поезда</b>\n━━━━━━━━━━━━━━\n"
+        f"🎁 <b>Ускорение бесплатного поезда</b>\n━━━━━━━━━━━━━━\n"
         f"Уровень {current_level}/{FREE_CAR_MAX_UPGRADE_LEVEL}\n{bar}\n"
         f"Текущий кулдаун: {h}ч {m}м\n━━━━━━━━━━━━━━\n"
         f"Ур. {next_level}: {cost_silver:,} серебра + {cost_gold} золота".replace(",", " "),
